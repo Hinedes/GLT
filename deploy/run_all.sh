@@ -34,12 +34,17 @@ python3 "$(dirname "$0")/classify_graft.py" "$GRAFT" >/dev/null 2>&1 && log "cla
 "$(dirname "$0")/eval_sparse.sh" || finish 1                    # THE science gate: fresh sparse graft must retain capability
 "$(dirname "$0")/bench.sh"    || log "bench: failed (reported, non-fatal)"
 
+# Aggregate BEFORE reading the verdict. summary.json is only written by
+# aggregate.py (finish() also calls it, harmlessly), so it must run here or the
+# BT read below would always see UNDETERMINED.
+python3 "$(dirname "$0")/aggregate.py" >/dev/null 2>&1 || { log "aggregate failed"; finish 1; }
+
 # Final status must reflect the scientific verdict, not merely "scripts exited 0".
 # breakthrough == true  -> rc 0 (success)
 # breakthrough == false / UNDETERMINED -> rc 2 (non-success, nonzero)
-BT=$(python3 - <<'PY' 2>/dev/null || echo UNDETERMINED
-import json, os
-p = os.environ.get("RESULT_DIR", "/workspace/results") + "/summary.json"
+BT=$(python3 - "$RESULT_DIR/summary.json" <<'PY' 2>/dev/null || echo UNDETERMINED
+import json, sys
+p = sys.argv[1]
 try:
     print(str(json.load(open(p)).get("verdict", {}).get("breakthrough", "UNDETERMINED")))
 except Exception:

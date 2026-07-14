@@ -4,10 +4,9 @@ source "$(dirname "$0")/config.sh"
 source "$(dirname "$0")/lib.sh"
 mkdir -p "$OUT_DIR"
 
-hip_step=$(grep -o 'sec_per_step_p50[^0-9.]*[0-9.]*' "$OUT_DIR/train.log" 2>/dev/null | grep -o '[0-9.]*' | head -1) || true
-[ -z "$hip_step" ] && hip_step=$(grep -o 'sec_per_step[^0-9.]*[0-9.]*' "$OUT_DIR/train.log" 2>/dev/null | grep -o '[0-9.]*' | head -1) || true
-hip_vram=$(grep -o 'peak_train_vram_mb[^0-9.]*[0-9.]*' "$OUT_DIR/train.log" 2>/dev/null | grep -o '[0-9.]*' | head -1) || true
-log "HIP step_time_s=${hip_step:-NA} vram_mb=${hip_vram:-NA}"
+hip_step=$(metric "$OUT_DIR/train.log" "$HIP_STEP_METRIC")
+hip_vram=$(metric "$OUT_DIR/train.log" "$HIP_VRAM_METRIC")
+log "HIP step_time_s=${hip_step:-NA} vram_mb=${hip_vram:-NA} (metrics: $HIP_STEP_METRIC / $HIP_VRAM_METRIC)"
 
 tphs_provided=0; tphs_step=""; tphs_vram=""
 if [ -n "${TPHS_CMD:-}" ]; then

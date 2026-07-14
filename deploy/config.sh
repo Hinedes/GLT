@@ -15,6 +15,9 @@ GRAFT="${GRAFT:-${ROOT}/medical_all3.graft}"
 OUT_DIR="${OUT_DIR:-${ROOT}/out}"
 RESULT_DIR="${RESULT_DIR:-${ROOT}/results}"
 MANIFEST="${MANIFEST:-${ROOT}/manifest.sha256}"
+# Export so child python (aggregate.py, the BT verdict reader) sees the real
+# paths via os.environ instead of falling back to the /workspace defaults.
+export ROOT OUT_DIR RESULT_DIR MANIFEST
 
 # ---- model config (from medical_all3.run.json) ----
 DOMAIN_ID=0
@@ -40,6 +43,9 @@ BAND_RETENTION="${BAND_RETENTION:-0.90}"        # refined band must retain >=90%
 SPARSE_RETENTION="${SPARSE_RETENTION:-0.90}"    # fresh sparse graft must retain >=90% of full gain
 HIP_STEP_RATIO="${HIP_STEP_RATIO:-0.75}"        # HIP step <= 75% of TPHS (>=25% faster)
 HIP_VRAM_RATIO="${HIP_VRAM_RATIO:-0.80}"        # HIP VRAM <= 80% of TPHS to count as a VRAM win (material)
+# Metric keys the HIP binary prints (key=value form; tune to the real binary output).
+HIP_STEP_METRIC="${HIP_STEP_METRIC:-sec_per_step}"
+HIP_VRAM_METRIC="${HIP_VRAM_METRIC:-peak_train_vram_mb}"
 LAYER_BUDGET="${LAYER_BUDGET:-12}"              # <=12 layers
 
 # ---- layer bands to probe (GPT step 2) ----

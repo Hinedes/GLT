@@ -52,10 +52,13 @@ LAYER_BUDGET="${LAYER_BUDGET:-12}"              # <=12 layers
 BANDS=( "0-8" "9-17" "18-26" "27-35" )
 
 # ---- optional TPHS runner (leave empty -> verdict UNDETERMINED) ----
-# Set TPHS_CMD to the matched-hyperparameter harness and TPHS_ENTRY to the
-# ORIGINAL TPHS implementation's training command:
+# Set TPHS_CMD to the matched-hyperparameter harness that drives the ORIGINAL
+# Hinedes/grafting implementation via deploy/tphs_bench.py:
 #   TPHS_CMD="bash /workspace/tphs_run.sh"
-#   TPHS_ENTRY="python3 /path/to/tphs/train.py"   # reads TPHS_* env vars
+# tphs_run.sh exports matched hyperparameters and execs tphs_bench.py, which
+# imports the real AxisDeltaInjector. The original TPHS source must be present
+# on the droplet at TPHS_SRC (default /workspace/grafting) — stage it via
+# upload_to_droplet.sh (TPHS_SRC_LOCAL).
 TPHS_CMD="${TPHS_CMD:-}"
 
 # ---- optional exfil after done: user@host:/path  (droplet can be killed after) ----

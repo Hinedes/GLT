@@ -41,6 +41,8 @@ RUN_TIMEOUT="${RUN_TIMEOUT:-21600}"     # 6h wall-clock cap for run_all.sh
 
 # ---- training data (domain + OOD .bin files) so HIP and TPHS train identically ----
 DATA_LOCAL="${DATA_LOCAL:-}"            # local dir of *.bin -> ${REMOTE_ROOT}/data/
+# ---- original TPHS source (Hinedes/grafting) so tphs_bench.py can import AxisDeltaInjector ----
+TPHS_SRC_LOCAL="${TPHS_SRC_LOCAL:-}"   # local path to the original TPHS repo -> ${REMOTE_ROOT}/grafting
 
 # ============================================================================
 usage() { echo "usage: DROPLET_SSH=user@host MODEL_LOCAL=/path/to/model EVAL_LOCAL=/path/to/bin [BINARY_LOCAL=/path] $0"; exit 2; }
@@ -83,6 +85,10 @@ scp_up "${GRAFT_LOCAL}" "${REMOTE_ROOT}/medical_all3.graft"
 if [ -n "${DATA_LOCAL:-}" ]; then
   echo "==> [3b] uploading training data (domain + OOD) -> ${REMOTE_ROOT}/data/"
   rsync_up "${DATA_LOCAL}/" "${REMOTE_ROOT}/data/"
+fi
+if [ -n "${TPHS_SRC_LOCAL:-}" ]; then
+  echo "==> [3c] uploading original TPHS source -> ${REMOTE_ROOT}/grafting/"
+  rsync_up "${TPHS_SRC_LOCAL}/" "${REMOTE_ROOT}/grafting/"
 fi
 
 echo "==> [4/6] providing the HIP binary"

@@ -77,6 +77,8 @@ def main():
     max_len      = int(os.environ.get("TPHS_MAX_LEN", "512"))
     domain_index = int(os.environ.get("TPHS_DOMAIN_INDEX", "0"))
     max_domains  = int(os.environ.get("TPHS_MAX_DOMAINS", "4"))
+    seed         = int(os.environ.get("TPHS_SEED", "42"))
+    torch.manual_seed(seed)
 
     if not layer_range:
         sys.stderr.write("TPHS_BENCH: TPHS_LAYER_RANGE required (selected band)\n"); sys.exit(1)
@@ -103,14 +105,25 @@ def main():
     domain_arr = read_bin(domain_bin)
     ood_arr = np.concatenate([read_bin(b) for b in ood_bins], axis=0)
     dataset = BinPairDataset(domain_arr, ood_arr, max_len, int(pad_id))
-    loader = torch.utils.data.DataLoader(dataset, batch_size=batch, shuffle=True, drop_last=True)
+    g = torch.Generator().manual_seed(seed)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=batch, shuffle=True,
+                                        drop_last=True, generator=g)
+    loader_iter = iter(loader)
 
     layers = discover_ffn_layers(model, layer_range)
     if not layers:
         sys.stderr.write("TPHS_BENCH: no FFN layers for range %s\n" % layer_range); sys.exit(1)
     hidden = getattr(model.config, "hidden_size", None)
     slices = compute_axis_slices(layers, domain_index, max_domains, hidden)
+
+    # Freeze the host model BEFORE creating D1 (matches original TPHS exactly).
+    for p in model.parameters():
+        p.requires_grad = False
     injector = AxisDeltaInjector(layers, slices)
+    n_host_train = sum(p.requires_grad for p in model.parameters())
+    n_delta_train = sum(p.requires_grad for p in injector.parameters())
+    assert n_host_train == 0, "host model must be frozen (requires_grad==0)"
+    assert n_delta_train > 0, "no trainable delta parameters created"
     opt = torch.optim.AdamW(injector.parameters(), lr=lr, weight_decay=0.01)
 
     peak_used = 0
@@ -119,12 +132,18 @@ def main():
     end_ev = torch.cuda.Event(enable_timing=True)
 
     for step in range(1, steps + 1):
-        input_ids, mask = next(iter(loader))
+        try:
+            input_ids, mask = next(loader_iter)
+        except StopIteration:
+            loader_iter = iter(loader)
+            input_ids, mask = next(loader_iter)
+        # Timing boundary matches HIP: start BEFORE the host->device copies,
+        # so both runs measure from before H2D through completed AdamW.
+        start_ev.record()
         input_ids = input_ids.view(-1, input_ids.size(-1)).to(device)
         mask = mask.view(-1, mask.size(-1)).to(device)
         injector.clear_saved_energy()
 
-        start_ev.record()
         with torch.amp.autocast(device_type=amp_type, dtype=amp_dtype, enabled=use_amp):
             out = model(input_ids=input_ids)
             shift_logits = out.logits[:, :-1].contiguous()

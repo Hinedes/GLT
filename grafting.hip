@@ -820,6 +820,12 @@ int main(int argc, char** argv) try {
         }
     };
 
+    // GLT: HIP events spanning a full step (forward/backward on main stream +
+    // AdamW on adamw_stream) for completion-based, not submission-based, timing.
+    hipEvent_t step_start_event, step_end_event;
+    HIP_CHECK(hipEventCreate(&step_start_event));
+    HIP_CHECK(hipEventCreate(&step_end_event));
+
     if (!load_base_model_safetensors(safetensors_path)) {
         return EXIT_FAILURE;
     }
@@ -946,12 +952,13 @@ int main(int argc, char** argv) try {
     HIP_CHECK(hipEventRecord(arena.adamw_event, arena.adamw_stream));
 
     for (int step = 0; step < steps; ++step) {
-        auto step_t0 = std::chrono::steady_clock::now();
         g_layer_activations.clear();
         g_layer_activations.reserve(g_cfg.num_layers);
 
         // Pipeline: wait for previous step's AdamW to finish on the current stream.
         HIP_CHECK(hipStreamWaitEvent(current_hip_stream(), arena.adamw_event, 0));
+        // GLT: mark the start of THIS step's GPU work (after the prev-step wait).
+        HIP_CHECK(hipEventRecord(step_start_event, current_hip_stream()));
         float host_scale = -1.0f;
         float grad_norm = -1.0f;
 
@@ -1163,8 +1170,15 @@ int main(int argc, char** argv) try {
         execute_adamw_all(arena, graft, step, step_lr, arena.adamw_stream);
         // adamw_event fires after AdamW completes ” next step waits on it
         HIP_CHECK(hipEventRecord(arena.adamw_event, arena.adamw_stream));
-        auto step_t1 = std::chrono::steady_clock::now();
-        double step_time_sec = std::chrono::duration<double>(step_t1 - step_t0).count();
+        // GLT: completion-based timing. step_end is recorded on the adamw stream
+        // AFTER this step's AdamW, so the interval covers forward+backward+adamw.
+        // We synchronize on step_end before reading, so the CPU timer cannot stop
+        // while GPU kernels are still in flight (no fake "HIP is faster" result).
+        HIP_CHECK(hipEventRecord(step_end_event, arena.adamw_stream));
+        HIP_CHECK(hipEventSynchronize(step_end_event));
+        float step_ms = 0;
+        HIP_CHECK(hipEventElapsedTime(&step_ms, step_start_event, step_end_event));
+        double step_time_sec = step_ms / 1000.0;
         // GLT instrumentation: sample peak VRAM each step; record steady-state
         // time (exclude first-step warmup) for the median.
         sample_peak_vram();
@@ -1256,6 +1270,8 @@ int main(int argc, char** argv) try {
     std::cout << "peak_train_vram_mb=" << (peak_used_mb / 1024 / 1024) << "\n";
     std::cout << "timed_steps=" << steady_step_times.size() << "\n";
     std::cout << "warmup_steps_excluded=" << warmup_steps_excluded << "\n";
+    HIP_CHECK(hipEventDestroy(step_start_event));
+    HIP_CHECK(hipEventDestroy(step_end_event));
 
     std::cout << "[Save] Writing safetensors to " << output_path << "\n";
     save_safetensors(output_path, graft);

@@ -35,9 +35,12 @@ MODEL_NAME="${MODEL_NAME:-real_SmolLM3-3B}"
 
 # ---- optional pass-throughs to run_all.sh ----
 TPHS_CMD="${TPHS_CMD:-}"                # e.g. "bash /workspace/tphs_run.sh"
-TPHS_ENTRY="${TPHS_ENTRY:-}"            # original TPHS training cmd (reads TPHS_* env); required if TPHS_CMD set
+TPHS_ENTRY="${TPHS_ENTRY:-}"            # original TPHS cmd TEMPLATE (see tphs_run.sh); required if TPHS_CMD set
 EXFIL="${EXFIL:-}"                      # user@host:/path to exfil after run (optional)
 RUN_TIMEOUT="${RUN_TIMEOUT:-21600}"     # 6h wall-clock cap for run_all.sh
+
+# ---- training data (domain + OOD .bin files) so HIP and TPHS train identically ----
+DATA_LOCAL="${DATA_LOCAL:-}"            # local dir of *.bin -> ${REMOTE_ROOT}/data/
 
 # ============================================================================
 usage() { echo "usage: DROPLET_SSH=user@host MODEL_LOCAL=/path/to/model EVAL_LOCAL=/path/to/bin [BINARY_LOCAL=/path] $0"; exit 2; }
@@ -76,6 +79,11 @@ else
   scp_up "${EVAL_LOCAL}" "${REMOTE_ROOT}/$(basename "${EVAL_LOCAL}")"
 fi
 scp_up "${GRAFT_LOCAL}" "${REMOTE_ROOT}/medical_all3.graft"
+
+if [ -n "${DATA_LOCAL:-}" ]; then
+  echo "==> [3b] uploading training data (domain + OOD) -> ${REMOTE_ROOT}/data/"
+  rsync_up "${DATA_LOCAL}/" "${REMOTE_ROOT}/data/"
+fi
 
 echo "==> [4/6] providing the HIP binary"
 if [ "${BUILD_ON_DROPLET}" = "1" ]; then

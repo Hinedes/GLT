@@ -43,16 +43,20 @@ BAND_RETENTION="${BAND_RETENTION:-0.90}"        # refined band must retain >=90%
 SPARSE_RETENTION="${SPARSE_RETENTION:-0.90}"    # fresh sparse graft must retain >=90% of full gain
 HIP_STEP_RATIO="${HIP_STEP_RATIO:-0.75}"        # HIP step <= 75% of TPHS (>=25% faster)
 HIP_VRAM_RATIO="${HIP_VRAM_RATIO:-0.80}"        # HIP VRAM <= 80% of TPHS to count as a VRAM win (material)
-# Metric keys the HIP binary prints (key=value form; tune to the real binary output).
-HIP_STEP_METRIC="${HIP_STEP_METRIC:-sec_per_step}"
+# Metric keys the HIP binary prints (key=value form; matched to grafting.hip output).
+HIP_STEP_METRIC="${HIP_STEP_METRIC:-sec_per_step_p50}"
 HIP_VRAM_METRIC="${HIP_VRAM_METRIC:-peak_train_vram_mb}"
 LAYER_BUDGET="${LAYER_BUDGET:-12}"              # <=12 layers
 
 # ---- layer bands to probe (GPT step 2) ----
 BANDS=( "0-8" "9-17" "18-26" "27-35" )
 
-# ---- optional TPHS runner (leave empty to skip the comparison) ----
-TPHS_CMD="${TPHS_CMD:-}"   # e.g. "python3 /workspace/tphs_bench.py --layers 0-8"
+# ---- optional TPHS runner (leave empty -> verdict UNDETERMINED) ----
+# Set TPHS_CMD to the matched-hyperparameter harness and TPHS_ENTRY to the
+# ORIGINAL TPHS implementation's training command:
+#   TPHS_CMD="bash /workspace/tphs_run.sh"
+#   TPHS_ENTRY="python3 /path/to/tphs/train.py"   # reads TPHS_* env vars
+TPHS_CMD="${TPHS_CMD:-}"
 
 # ---- optional exfil after done: user@host:/path  (droplet can be killed after) ----
 EXFIL="${EXFIL:-}"

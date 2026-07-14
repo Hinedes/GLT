@@ -804,6 +804,22 @@ int main(int argc, char** argv) try {
               << ", Lambda silence: " << g_cfg.lambda_silence << "\n";
     std::cout << "Seed: " << seed << "\n";
 
+    // ---- PATCH GLT: steady-state timing / peak-VRAM instrumentation ----
+    // Peak VRAM is sampled from hipMemGetInfo after allocation and after every
+    // step. Steady-state step times exclude the first-step warmup (kernels /
+    // allocators not yet hot). Final checkpoint save happens after the loop and
+    // is intentionally NOT part of step timing.
+    size_t peak_used_mb = 0;
+    std::vector<double> steady_step_times;
+    const int warmup_steps_excluded = 1;   // first-step warmup excluded from median
+    auto sample_peak_vram = [&]() {
+        size_t fb = 0, tot = 0;
+        if (hipMemGetInfo(&fb, &tot) == hipSuccess) {
+            size_t u = tot - fb;
+            if (u > peak_used_mb) peak_used_mb = u;
+        }
+    };
+
     if (!load_base_model_safetensors(safetensors_path)) {
         return EXIT_FAILURE;
     }
@@ -826,6 +842,7 @@ int main(int argc, char** argv) try {
     // from the arena, which retains only scratch/gradients/optimizer state.
     GraftWeights graft{};
     allocate_graft_weights(graft, domain_id, g_cfg.delta_bf16_mirror);
+    sample_peak_vram();   // peak after base + arena + graft allocation
 
     // Ownership proof: graft pointers must NOT lie inside the arena range.
     {
@@ -1148,6 +1165,10 @@ int main(int argc, char** argv) try {
         HIP_CHECK(hipEventRecord(arena.adamw_event, arena.adamw_stream));
         auto step_t1 = std::chrono::steady_clock::now();
         double step_time_sec = std::chrono::duration<double>(step_t1 - step_t0).count();
+        // GLT instrumentation: sample peak VRAM each step; record steady-state
+        // time (exclude first-step warmup) for the median.
+        sample_peak_vram();
+        if (step > 0) steady_step_times.push_back(step_time_sec);
         if (step > 0) {
             hipError_t copy_status = hipEventQuery(arena.grad_clip_copy_event);
             if (copy_status == hipSuccess) {
@@ -1222,6 +1243,19 @@ int main(int argc, char** argv) try {
 
     // Sync: ensure last step's AdamW completes before saving
     HIP_CHECK(hipStreamSynchronize(arena.adamw_stream));
+
+    // ---- GLT: emit machine-readable steady-state timing / peak VRAM ----
+    double sec_per_step_p50 = 0.0;
+    if (!steady_step_times.empty()) {
+        std::vector<double> tmp = steady_step_times;
+        std::sort(tmp.begin(), tmp.end());
+        size_t m = tmp.size() / 2;
+        sec_per_step_p50 = (tmp.size() % 2 == 1) ? tmp[m] : (tmp[m - 1] + tmp[m]) / 2.0;
+    }
+    std::cout << "sec_per_step_p50=" << std::fixed << std::setprecision(6) << sec_per_step_p50 << "\n";
+    std::cout << "peak_train_vram_mb=" << (peak_used_mb / 1024 / 1024) << "\n";
+    std::cout << "timed_steps=" << steady_step_times.size() << "\n";
+    std::cout << "warmup_steps_excluded=" << warmup_steps_excluded << "\n";
 
     std::cout << "[Save] Writing safetensors to " << output_path << "\n";
     save_safetensors(output_path, graft);

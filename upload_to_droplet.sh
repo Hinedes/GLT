@@ -34,7 +34,8 @@ REMOTE_ROOT="${REMOTE_ROOT:-/workspace}"
 MODEL_NAME="${MODEL_NAME:-real_SmolLM3-3B}"
 
 # ---- optional pass-throughs to run_all.sh ----
-TPHS_CMD="${TPHS_CMD:-}"                # original TPHS training/eval command (baseline)
+TPHS_CMD="${TPHS_CMD:-}"                # e.g. "bash /workspace/tphs_run.sh"
+TPHS_ENTRY="${TPHS_ENTRY:-}"            # original TPHS training cmd (reads TPHS_* env); required if TPHS_CMD set
 EXFIL="${EXFIL:-}"                      # user@host:/path to exfil after run (optional)
 RUN_TIMEOUT="${RUN_TIMEOUT:-21600}"     # 6h wall-clock cap for run_all.sh
 
@@ -99,7 +100,7 @@ else
 fi
 
 echo "==> [5/6] triggering run_all.sh (timeout ${RUN_TIMEOUT}s)"
-remote "cd ${REMOTE_ROOT} && nohup env TPHS_CMD='${TPHS_CMD}' EXFIL='${EXFIL}' \
+remote "cd ${REMOTE_ROOT} && nohup env TPHS_CMD='${TPHS_CMD}' TPHS_ENTRY='${TPHS_ENTRY}' EXFIL='${EXFIL}' \
   bash run_all.sh > ${REMOTE_ROOT}/run_all.log 2>&1 &"
 echo "    launched in background; watching log (tail) ..."
 sleep 15

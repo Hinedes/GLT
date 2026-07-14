@@ -1,0 +1,1156 @@
+{
+  "files": {
+    "grafting.hip": {
+      "nodes": [
+        {
+          "id": "L_batch",
+          "label": "build batch\nhalf domain + half OOD",
+          "kind": "io",
+          "scope": "loop",
+          "detail": "host_input_ids + host_ood_mask"
+        },
+        {
+          "id": "L_copy",
+          "label": "hipMemcpyHostToDevice",
+          "kind": "kernel",
+          "scope": "loop",
+          "detail": "\u2192 d_input_ids, d_ood_mask"
+        },
+        {
+          "id": "L_embed",
+          "label": "embed_tokens lookup",
+          "kind": "frozen",
+          "scope": "loop",
+          "detail": "frozen embedding table"
+        },
+        {
+          "id": "L_fwd",
+          "label": "forward \u00d7 36 layers",
+          "kind": "kernel",
+          "scope": "loop",
+          "detail": "forward_layer(l=0..35)"
+        },
+        {
+          "id": "L_fnorm",
+          "label": "final rms_norm + lm_head",
+          "kind": "frozen",
+          "scope": "loop",
+          "detail": "frozen"
+        },
+        {
+          "id": "L_logits",
+          "label": "logits [B,seq,vocab]",
+          "kind": "tensor",
+          "scope": "loop",
+          "detail": "lm_head output"
+        },
+        {
+          "id": "L_lmloss",
+          "label": "lm_loss = CE on domain tokens",
+          "kind": "loss",
+          "scope": "loop",
+          "detail": "cross-entropy on in-domain tokens",
+          "live": {
+            "src": "csv",
+            "key": "lm_loss"
+          }
+        },
+        {
+          "id": "L_silence",
+          "label": "silence_val = \u03bb\u00b7mean(energy) on OOD",
+          "kind": "loss",
+          "scope": "loop",
+          "detail": "TPHS-compatible silence loss",
+          "live": {
+            "src": "csv",
+            "key": "silence_loss"
+          }
+        },
+        {
+          "id": "L_total",
+          "label": "total = LM_SCALE\u00b7lm + silence",
+          "kind": "loss",
+          "scope": "loop",
+          "detail": "combined objective",
+          "live": {
+            "src": "csv",
+            "key": "total_loss"
+          }
+        },
+        {
+          "id": "L_glogits",
+          "label": "grad_logits = (softmax\u2212onehot)\u00b7mask/in_count",
+          "kind": "tensor",
+          "scope": "loop",
+          "detail": "loss gradient w.r.t. logits"
+        },
+        {
+          "id": "L_bwd",
+          "label": "backward \u00d7 36 layers, reverse",
+          "kind": "kernel",
+          "scope": "loop",
+          "detail": "backward_layer(l=35..0)"
+        },
+        {
+          "id": "L_clip",
+          "label": "grad clip (reduce_l2\u2192calc_scale\u2192apply_scale)",
+          "kind": "kernel",
+          "scope": "loop",
+          "detail": "global L2 clip on all 108 deltas",
+          "match": "reduce_l2_kernel"
+        },
+        {
+          "id": "L_adamw",
+          "label": "execute_adamw_all",
+          "kind": "optimizer",
+          "scope": "loop",
+          "detail": "adamw_fused_kernel \u2014 updates d_delta_weight ONLY",
+          "match": "adamw_fused_kernel"
+        },
+        {
+          "id": "L_gradnorm",
+          "label": "grad_norm",
+          "kind": "tensor",
+          "scope": "loop",
+          "detail": "global graft gradient norm",
+          "live": {
+            "src": "csv",
+            "key": "grad_norm"
+          }
+        },
+        {
+          "id": "L_lr",
+          "label": "step_lr (warmup+cosine)",
+          "kind": "io",
+          "scope": "loop",
+          "detail": "scheduled learning rate",
+          "live": {
+            "src": "csv",
+            "key": "lr"
+          }
+        },
+        {
+          "id": "L_dom_e",
+          "label": "domain_graft_energy",
+          "kind": "tensor",
+          "scope": "loop",
+          "detail": "mean graft energy on domain tokens",
+          "live": {
+            "src": "csv",
+            "key": "domain_graft_energy"
+          }
+        },
+        {
+          "id": "L_ood_e",
+          "label": "ood_graft_energy",
+          "kind": "tensor",
+          "scope": "loop",
+          "detail": "mean graft energy on OOD tokens",
+          "live": {
+            "src": "csv",
+            "key": "ood_graft_energy"
+          }
+        },
+        {
+          "id": "L_eratio",
+          "label": "domain/ood energy ratio",
+          "kind": "tensor",
+          "scope": "loop",
+          "detail": "selectivity signal",
+          "live": {
+            "src": "csv",
+            "key": "domain_ood_energy_ratio"
+          }
+        },
+        {
+          "id": "L_actg",
+          "label": "active_grafts",
+          "kind": "io",
+          "scope": "loop",
+          "detail": "count of enabled graft projections",
+          "live": {
+            "src": "diag",
+            "key": "active_grafts"
+          }
+        },
+        {
+          "id": "L_lameff",
+          "label": "lambda_effective",
+          "kind": "io",
+          "scope": "loop",
+          "detail": "\u03bb/(ood_count\u00b7active_grafts)",
+          "live": {
+            "src": "diag",
+            "key": "lambda_effective"
+          }
+        },
+        {
+          "id": "F_x",
+          "label": "x (residual stream)",
+          "kind": "tensor",
+          "scope": "forward",
+          "detail": "[B,seq,2048]"
+        },
+        {
+          "id": "F_attn",
+          "label": "attention (frozen, NoGrad)",
+          "kind": "frozen",
+          "scope": "forward",
+          "detail": "rms_norm\u2192q,k,v\u2192RoPE\u2192SDPA\u2192o_proj",
+          "match": "attn_fwd"
+        },
+        {
+          "id": "F_xpost",
+          "label": "x \u2190 x + attn_out",
+          "kind": "tensor",
+          "scope": "forward",
+          "detail": "post-attention residual"
+        },
+        {
+          "id": "F_rms",
+          "label": "post_attn rms_norm",
+          "kind": "kernel",
+          "scope": "forward",
+          "detail": "custom HIP RMSNorm forward",
+          "match": "rms_norm_fwd_kernel"
+        },
+        {
+          "id": "F_xffn",
+          "label": "x_ffn_bf16",
+          "kind": "tensor",
+          "scope": "forward",
+          "detail": "[B,seq,2048] FFN input"
+        },
+        {
+          "id": "F_cap",
+          "label": "hipMemcpy \u2192 arena.d_ffn_input",
+          "kind": "kernel",
+          "scope": "forward",
+          "detail": "capture for backward recompute"
+        },
+        {
+          "id": "F_xh",
+          "label": "x_h_slice (axis-aligned, disjoint)",
+          "kind": "tensor",
+          "scope": "forward",
+          "detail": "x_ffn[:, h_start:h_start+H_SLICE]"
+        },
+        {
+          "id": "F_bgate",
+          "label": "at::linear(x_ffn, gate_proj_weight)",
+          "kind": "frozen",
+          "scope": "forward",
+          "detail": "FROZEN base \u2192 gate_pre",
+          "match": "Cijk"
+        },
+        {
+          "id": "F_gpre",
+          "label": "gate_pre [B,seq,11008] bf16",
+          "kind": "tensor",
+          "scope": "forward",
+          "detail": "base gate projection output"
+        },
+        {
+          "id": "F_egate",
+          "label": "execute_expand_forward (\u03b4_gate)",
+          "kind": "kernel",
+          "scope": "forward",
+          "detail": "\u03b4_gate = x_h @ \u0394_gate^T  (rocBLAS bf16\u00d7bf16\u2192f32)",
+          "match": "Cijk"
+        },
+        {
+          "id": "F_injg",
+          "label": "fused_inject_clone_energy_kernel (gate)",
+          "kind": "kernel",
+          "scope": "forward",
+          "detail": "gate_pre[i_slice]+=\u03b4_gate; clone\u2192acts.delta_gate_out; energy_gate=\u2016\u03b4_gate\u2016/\u221aS",
+          "match": "fused_inject_clone_energy_kernel"
+        },
+        {
+          "id": "F_clg",
+          "label": "acts.delta_gate_out (clean 1:1 clone)",
+          "kind": "state",
+          "scope": "forward",
+          "detail": "f32 clone kept for backward recompute"
+        },
+        {
+          "id": "F_bup",
+          "label": "at::linear(x_ffn, up_proj_weight)",
+          "kind": "frozen",
+          "scope": "forward",
+          "detail": "FROZEN base \u2192 up",
+          "match": "Cijk"
+        },
+        {
+          "id": "F_up",
+          "label": "up [B,seq,11008] bf16",
+          "kind": "tensor",
+          "scope": "forward",
+          "detail": "base up projection output"
+        },
+        {
+          "id": "F_eup",
+          "label": "execute_expand_forward (\u03b4_up)",
+          "kind": "kernel",
+          "scope": "forward",
+          "detail": "\u03b4_up = x_h @ \u0394_up^T",
+          "match": "Cijk"
+        },
+        {
+          "id": "F_inju",
+          "label": "fused_inject_clone_energy_kernel (up)",
+          "kind": "kernel",
+          "scope": "forward",
+          "detail": "up[i_slice]+=\u03b4_up; clone; energy_up",
+          "match": "fused_inject_clone_energy_kernel"
+        },
+        {
+          "id": "F_clu",
+          "label": "acts.delta_up_out (clean clone)",
+          "kind": "state",
+          "scope": "forward",
+          "detail": "f32 clone for backward"
+        },
+        {
+          "id": "F_silu",
+          "label": "fused_silu_product_strided_kernel",
+          "kind": "kernel",
+          "scope": "forward",
+          "detail": "intermediate = silu(gate_pre) \u00d7 up  \u2192 arena.d_intermediate",
+          "match": "fused_silu_product_strided_kernel"
+        },
+        {
+          "id": "F_inter",
+          "label": "arena.d_intermediate [B,seq,11008] bf16",
+          "kind": "tensor",
+          "scope": "forward",
+          "detail": "FFN intermediate"
+        },
+        {
+          "id": "F_bdown",
+          "label": "at::linear(intermediate, down_proj_weight)",
+          "kind": "frozen",
+          "scope": "forward",
+          "detail": "FROZEN base \u2192 ffn_out",
+          "match": "Cijk"
+        },
+        {
+          "id": "F_ffn",
+          "label": "ffn_out [B,seq,2048]",
+          "kind": "tensor",
+          "scope": "forward",
+          "detail": "base down projection output"
+        },
+        {
+          "id": "F_inti",
+          "label": "intermediate_i_slice",
+          "kind": "tensor",
+          "scope": "forward",
+          "detail": "intermediate[:, i_slice]"
+        },
+        {
+          "id": "F_edown",
+          "label": "execute_contract_forward (\u03b4_down)",
+          "kind": "kernel",
+          "scope": "forward",
+          "detail": "\u03b4_down = intermediate_i @ \u0394_down^T",
+          "match": "Cijk"
+        },
+        {
+          "id": "F_injd",
+          "label": "fused_inject_clone_energy_kernel (down)",
+          "kind": "kernel",
+          "scope": "forward",
+          "detail": "ffn_out[h_slice]+=\u03b4_down; clone; energy_down",
+          "match": "fused_inject_clone_energy_kernel"
+        },
+        {
+          "id": "F_cld",
+          "label": "acts.delta_down_out (clean clone)",
+          "kind": "state",
+          "scope": "forward",
+          "detail": "f32 clone for backward"
+        },
+        {
+          "id": "F_res",
+          "label": "x \u2190 x + ffn_out (residual add)",
+          "kind": "kernel",
+          "scope": "forward",
+          "detail": "residual stream update",
+          "match": "vectorized_elementwise_kernel"
+        },
+        {
+          "id": "B_dx",
+          "label": "dx (grad wrt layer output)",
+          "kind": "tensor",
+          "scope": "backward",
+          "detail": "upstream gradient"
+        },
+        {
+          "id": "B_recomp",
+          "label": "recompute_ffn (CLEAN)",
+          "kind": "kernel",
+          "scope": "backward",
+          "detail": "gate_pre = base + acts.delta_gate_out (1:1); intermediate = silu(gate_pre)\u00d7up",
+          "match": "fused_silu_product_strided_kernel"
+        },
+        {
+          "id": "B_gint",
+          "label": "grad_intermediate = dx @ down^T",
+          "kind": "tensor",
+          "scope": "backward",
+          "detail": "from frozen base down_proj",
+          "match": "Cijk"
+        },
+        {
+          "id": "B_dxh",
+          "label": "dx_h_slice = dx[:, h_slice]",
+          "kind": "tensor",
+          "scope": "backward",
+          "detail": "graft hidden-slice gradient"
+        },
+        {
+          "id": "B_sbd",
+          "label": "silence_blend_kernel (OOD only)",
+          "kind": "kernel",
+          "scope": "backward",
+          "detail": "dx_h += \u03bb_eff\u00b7\u03b4_down/(\u2016\u03b4_down\u2016\u00b7\u221aV) on OOD tokens",
+          "match": "silence_blend_kernel"
+        },
+        {
+          "id": "B_cbwd",
+          "label": "execute_contract_backward (grad_\u0394_down)",
+          "kind": "kernel",
+          "scope": "backward",
+          "detail": "grad_\u0394_down = intermediate_i^T @ dx_h \u2192 d_delta_grad (DEFERRED)",
+          "match": "Cijk"
+        },
+        {
+          "id": "B_cib",
+          "label": "grad_intermediate_i += dx_h @ \u0394_down^T",
+          "kind": "tensor",
+          "scope": "backward",
+          "detail": "backprop through contract delta",
+          "match": "Cijk"
+        },
+        {
+          "id": "B_gup_bwd",
+          "label": "fused_gate_up_bwd_kernel",
+          "kind": "kernel",
+          "scope": "backward",
+          "detail": "grad_gate_pre = grad_int\u00b7up\u00b7silu'(gate_pre); grad_up = grad_int\u00b7silu(gate_pre)",
+          "match": "fused_gate_up_bwd_kernel"
+        },
+        {
+          "id": "B_ggp",
+          "label": "grad_gate_pre",
+          "kind": "tensor",
+          "scope": "backward",
+          "detail": "from CLEAN recompute"
+        },
+        {
+          "id": "B_gup",
+          "label": "grad_up",
+          "kind": "tensor",
+          "scope": "backward",
+          "detail": "from CLEAN recompute"
+        },
+        {
+          "id": "B_dyg",
+          "label": "dy_gate = grad_gate_pre[:, i_slice]",
+          "kind": "tensor",
+          "scope": "backward",
+          "detail": "graft gate-slice gradient"
+        },
+        {
+          "id": "B_dyu",
+          "label": "dy_up = grad_up[:, i_slice]",
+          "kind": "tensor",
+          "scope": "backward",
+          "detail": "graft up-slice gradient"
+        },
+        {
+          "id": "B_sbgu",
+          "label": "fused_silence_blend_energy_kernel (OOD only)",
+          "kind": "kernel",
+          "scope": "backward",
+          "detail": "dy_gate/up += \u03bb_eff\u00b7\u03b4/(energy\u00b7\u221aV); energy reused from forward cache",
+          "match": "fused_silence_blend_energy_kernel"
+        },
+        {
+          "id": "B_ebwd",
+          "label": "execute_expand_backward \u00d72 (grad_\u0394_gate/up)",
+          "kind": "kernel",
+          "scope": "backward",
+          "detail": "grad_\u0394 = dy^T @ x_h \u2192 d_delta_grad (DEFERRED)",
+          "match": "Cijk"
+        },
+        {
+          "id": "B_gxb",
+          "label": "grad_x_h += dy @ \u0394",
+          "kind": "tensor",
+          "scope": "backward",
+          "detail": "backprop through expand delta to input",
+          "match": "Cijk"
+        },
+        {
+          "id": "B_bwd",
+          "label": "base gate/up_proj backward (NoGrad)",
+          "kind": "frozen",
+          "scope": "backward",
+          "detail": "grad_x_ffn = grad_gate_pre@gate_w^T + grad_up@up_w^T (INPUT grad only)",
+          "match": "Cijk"
+        },
+        {
+          "id": "B_rmsb",
+          "label": "rms_norm_bwd + residual identity",
+          "kind": "kernel",
+          "scope": "backward",
+          "detail": "\u2192 dx for previous layer",
+          "match": "rms_norm_bwd_kernel"
+        },
+        {
+          "id": "S_dw",
+          "label": "d_delta_weight (108 grafts, f32)",
+          "kind": "state",
+          "scope": "loop",
+          "detail": "trainable graft weights, flat buffer"
+        },
+        {
+          "id": "S_dg",
+          "label": "d_delta_grad (deferred)",
+          "kind": "state",
+          "scope": "loop",
+          "detail": "graft gradients accumulate here per step"
+        },
+        {
+          "id": "S_am",
+          "label": "d_adam_m (1st moment)",
+          "kind": "state",
+          "scope": "loop",
+          "detail": "AdamW state"
+        },
+        {
+          "id": "S_av",
+          "label": "d_adam_v (2nd moment)",
+          "kind": "state",
+          "scope": "loop",
+          "detail": "AdamW state"
+        }
+      ],
+      "edges": [
+        {
+          "from": "L_batch",
+          "to": "L_copy",
+          "label": "ids+mask",
+          "kind": "data"
+        },
+        {
+          "from": "L_copy",
+          "to": "L_embed",
+          "label": "d_input_ids",
+          "kind": "data"
+        },
+        {
+          "from": "L_embed",
+          "to": "L_fwd",
+          "label": "x",
+          "kind": "data"
+        },
+        {
+          "from": "L_fwd",
+          "to": "L_fnorm",
+          "label": "x",
+          "kind": "data"
+        },
+        {
+          "from": "L_fnorm",
+          "to": "L_logits",
+          "label": "logits",
+          "kind": "data"
+        },
+        {
+          "from": "L_logits",
+          "to": "L_lmloss",
+          "label": "domain tokens",
+          "kind": "data"
+        },
+        {
+          "from": "L_logits",
+          "to": "L_silence",
+          "label": "OOD energy",
+          "kind": "data"
+        },
+        {
+          "from": "L_lmloss",
+          "to": "L_total",
+          "label": "lm_loss",
+          "kind": "data"
+        },
+        {
+          "from": "L_silence",
+          "to": "L_total",
+          "label": "silence",
+          "kind": "data"
+        },
+        {
+          "from": "L_total",
+          "to": "L_glogits",
+          "label": "\u2207loss",
+          "kind": "grad"
+        },
+        {
+          "from": "L_glogits",
+          "to": "L_bwd",
+          "label": "dx",
+          "kind": "grad"
+        },
+        {
+          "from": "L_bwd",
+          "to": "L_clip",
+          "label": "d_delta_grad",
+          "kind": "grad"
+        },
+        {
+          "from": "L_clip",
+          "to": "L_adamw",
+          "label": "clipped grad",
+          "kind": "grad"
+        },
+        {
+          "from": "L_adamw",
+          "to": "S_dw",
+          "label": "update",
+          "kind": "data"
+        },
+        {
+          "from": "L_dom_e",
+          "to": "L_silence",
+          "label": "mean energy",
+          "kind": "data"
+        },
+        {
+          "from": "L_ood_e",
+          "to": "L_silence",
+          "label": "mean energy",
+          "kind": "data"
+        },
+        {
+          "from": "L_actg",
+          "to": "L_lameff",
+          "label": "count",
+          "kind": "data"
+        },
+        {
+          "from": "L_adamw",
+          "to": "L_embed",
+          "label": "BLOCKED: updates d_delta_weight only",
+          "kind": "blocked"
+        },
+        {
+          "from": "L_adamw",
+          "to": "L_fnorm",
+          "label": "BLOCKED: base weights frozen",
+          "kind": "blocked"
+        },
+        {
+          "from": "F_x",
+          "to": "F_attn",
+          "label": "x",
+          "kind": "data"
+        },
+        {
+          "from": "F_attn",
+          "to": "F_xpost",
+          "label": "attn_out",
+          "kind": "data"
+        },
+        {
+          "from": "F_xpost",
+          "to": "F_rms",
+          "label": "x",
+          "kind": "data"
+        },
+        {
+          "from": "F_rms",
+          "to": "F_xffn",
+          "label": "x_ffn",
+          "kind": "data"
+        },
+        {
+          "from": "F_xffn",
+          "to": "F_cap",
+          "label": "copy",
+          "kind": "data"
+        },
+        {
+          "from": "F_xffn",
+          "to": "F_xh",
+          "label": "slice",
+          "kind": "data"
+        },
+        {
+          "from": "F_xffn",
+          "to": "F_bgate",
+          "label": "x_ffn",
+          "kind": "data"
+        },
+        {
+          "from": "F_bgate",
+          "to": "F_gpre",
+          "label": "gate_pre",
+          "kind": "data"
+        },
+        {
+          "from": "F_xh",
+          "to": "F_egate",
+          "label": "x_h",
+          "kind": "data"
+        },
+        {
+          "from": "F_egate",
+          "to": "F_injg",
+          "label": "\u03b4_gate",
+          "kind": "data"
+        },
+        {
+          "from": "F_gpre",
+          "to": "F_injg",
+          "label": "gate_pre[i_slice]",
+          "kind": "data"
+        },
+        {
+          "from": "F_injg",
+          "to": "F_clg",
+          "label": "clean clone",
+          "kind": "data"
+        },
+        {
+          "from": "F_xffn",
+          "to": "F_bup",
+          "label": "x_ffn",
+          "kind": "data"
+        },
+        {
+          "from": "F_bup",
+          "to": "F_up",
+          "label": "up",
+          "kind": "data"
+        },
+        {
+          "from": "F_xh",
+          "to": "F_eup",
+          "label": "x_h",
+          "kind": "data"
+        },
+        {
+          "from": "F_eup",
+          "to": "F_inju",
+          "label": "\u03b4_up",
+          "kind": "data"
+        },
+        {
+          "from": "F_up",
+          "to": "F_inju",
+          "label": "up[i_slice]",
+          "kind": "data"
+        },
+        {
+          "from": "F_inju",
+          "to": "F_clu",
+          "label": "clean clone",
+          "kind": "data"
+        },
+        {
+          "from": "F_injg",
+          "to": "F_silu",
+          "label": "gate_pre",
+          "kind": "data"
+        },
+        {
+          "from": "F_inju",
+          "to": "F_silu",
+          "label": "up",
+          "kind": "data"
+        },
+        {
+          "from": "F_silu",
+          "to": "F_inter",
+          "label": "intermediate",
+          "kind": "data"
+        },
+        {
+          "from": "F_inter",
+          "to": "F_bdown",
+          "label": "intermediate",
+          "kind": "data"
+        },
+        {
+          "from": "F_bdown",
+          "to": "F_ffn",
+          "label": "ffn_out",
+          "kind": "data"
+        },
+        {
+          "from": "F_inter",
+          "to": "F_inti",
+          "label": "slice",
+          "kind": "data"
+        },
+        {
+          "from": "F_inti",
+          "to": "F_edown",
+          "label": "intermediate_i",
+          "kind": "data"
+        },
+        {
+          "from": "F_edown",
+          "to": "F_injd",
+          "label": "\u03b4_down",
+          "kind": "data"
+        },
+        {
+          "from": "F_ffn",
+          "to": "F_injd",
+          "label": "ffn_out[h_slice]",
+          "kind": "data"
+        },
+        {
+          "from": "F_injd",
+          "to": "F_cld",
+          "label": "clean clone",
+          "kind": "data"
+        },
+        {
+          "from": "F_injd",
+          "to": "F_res",
+          "label": "ffn_out",
+          "kind": "data"
+        },
+        {
+          "from": "F_res",
+          "to": "F_x",
+          "label": "x",
+          "kind": "data"
+        },
+        {
+          "from": "S_dw",
+          "to": "F_egate",
+          "label": "\u0394_gate (read-only)",
+          "kind": "data"
+        },
+        {
+          "from": "S_dw",
+          "to": "F_eup",
+          "label": "\u0394_up (read-only)",
+          "kind": "data"
+        },
+        {
+          "from": "S_dw",
+          "to": "F_edown",
+          "label": "\u0394_down (read-only)",
+          "kind": "data"
+        },
+        {
+          "from": "F_injg",
+          "to": "F_bgate",
+          "label": "BLOCKED: writes local gate_pre, base weight untouched",
+          "kind": "blocked"
+        },
+        {
+          "from": "B_dx",
+          "to": "B_recomp",
+          "label": "dx",
+          "kind": "data"
+        },
+        {
+          "from": "B_recomp",
+          "to": "B_gint",
+          "label": "intermediate",
+          "kind": "data"
+        },
+        {
+          "from": "B_dx",
+          "to": "B_dxh",
+          "label": "slice",
+          "kind": "data"
+        },
+        {
+          "from": "B_dxh",
+          "to": "B_sbd",
+          "label": "dx_h",
+          "kind": "data"
+        },
+        {
+          "from": "B_recomp",
+          "to": "B_cbwd",
+          "label": "intermediate_i",
+          "kind": "data"
+        },
+        {
+          "from": "B_sbd",
+          "to": "B_cbwd",
+          "label": "dx_h",
+          "kind": "data"
+        },
+        {
+          "from": "B_cbwd",
+          "to": "S_dg",
+          "label": "grad_\u0394_down (deferred)",
+          "kind": "grad"
+        },
+        {
+          "from": "B_dxh",
+          "to": "B_cib",
+          "label": "dx_h",
+          "kind": "data"
+        },
+        {
+          "from": "B_cib",
+          "to": "B_gint",
+          "label": "grad_int_i",
+          "kind": "grad"
+        },
+        {
+          "from": "B_gint",
+          "to": "B_gup_bwd",
+          "label": "grad_intermediate",
+          "kind": "grad"
+        },
+        {
+          "from": "B_recomp",
+          "to": "B_gup_bwd",
+          "label": "gate_pre,up",
+          "kind": "data"
+        },
+        {
+          "from": "B_gup_bwd",
+          "to": "B_ggp",
+          "label": "grad_gate_pre",
+          "kind": "grad"
+        },
+        {
+          "from": "B_gup_bwd",
+          "to": "B_gup",
+          "label": "grad_up",
+          "kind": "grad"
+        },
+        {
+          "from": "B_ggp",
+          "to": "B_dyg",
+          "label": "slice",
+          "kind": "data"
+        },
+        {
+          "from": "B_gup",
+          "to": "B_dyu",
+          "label": "slice",
+          "kind": "data"
+        },
+        {
+          "from": "B_dyg",
+          "to": "B_sbgu",
+          "label": "dy_gate",
+          "kind": "data"
+        },
+        {
+          "from": "B_dyu",
+          "to": "B_sbgu",
+          "label": "dy_up",
+          "kind": "data"
+        },
+        {
+          "from": "B_sbgu",
+          "to": "B_ebwd",
+          "label": "dy_gate/up",
+          "kind": "grad"
+        },
+        {
+          "from": "B_ebwd",
+          "to": "S_dg",
+          "label": "grad_\u0394_gate/up (deferred)",
+          "kind": "grad"
+        },
+        {
+          "from": "B_ebwd",
+          "to": "B_gxb",
+          "label": "grad_x_h",
+          "kind": "grad"
+        },
+        {
+          "from": "B_gup_bwd",
+          "to": "B_bwd",
+          "label": "grad_gate_pre/up",
+          "kind": "grad"
+        },
+        {
+          "from": "B_bwd",
+          "to": "B_rmsb",
+          "label": "grad_x_ffn",
+          "kind": "grad"
+        },
+        {
+          "from": "B_gxb",
+          "to": "B_rmsb",
+          "label": "grad_x_h",
+          "kind": "grad"
+        },
+        {
+          "from": "S_dw",
+          "to": "B_cbwd",
+          "label": "\u0394_down",
+          "kind": "data"
+        },
+        {
+          "from": "S_dw",
+          "to": "B_ebwd",
+          "label": "\u0394_gate/up",
+          "kind": "data"
+        },
+        {
+          "from": "S_dw",
+          "to": "B_cib",
+          "label": "\u0394_down",
+          "kind": "data"
+        },
+        {
+          "from": "F_gpre",
+          "to": "B_recomp",
+          "label": "BLOCKED: backward uses clean clone, not forward tensor",
+          "kind": "blocked"
+        },
+        {
+          "from": "B_bwd",
+          "to": "F_bgate",
+          "label": "BLOCKED: NoGradGuard \u2014 input grad only, no weight grad",
+          "kind": "blocked"
+        },
+        {
+          "from": "S_dg",
+          "to": "S_dw",
+          "label": "BLOCKED: deferred \u2014 applied only by global AdamW after grad-clip",
+          "kind": "blocked"
+        }
+      ],
+      "heat": {
+        "rocBLAS_GEMM": {
+          "launches": 32370,
+          "total_ms": 42422.8,
+          "share": 0.765
+        },
+        "vectorized_elementwise": {
+          "launches": 188799,
+          "total_ms": 6609.3,
+          "share": 0.119
+        },
+        "attn_fwd": {
+          "launches": 5616,
+          "total_ms": 2426.2,
+          "share": 0.044,
+          "note": "attn_fwd + bwd_kernel_dq + bwd_kernel_dk_dv"
+        },
+        "fused_gate_up_bwd_kernel": {
+          "launches": 1404,
+          "total_ms": 1444.1,
+          "share": null
+        },
+        "fused_inject_clone_energy_kernel": {
+          "launches": 7020,
+          "total_ms": 2219.5,
+          "share": 0.04,
+          "note": "grouped w/ rms_norm_fwd"
+        },
+        "rms_norm_fwd_kernel": {
+          "launches": null,
+          "total_ms": null,
+          "share": 0.04,
+          "note": "grouped in custom graft total"
+        },
+        "f32_to_bf16_kernel": {
+          "launches": 4264,
+          "total_ms": 394.5,
+          "share": null
+        },
+        "__amd_rocclr_copyBuffer": {
+          "launches": 8203,
+          "total_ms": 582.9,
+          "share": 0.011
+        },
+        "ExpandForward": {
+          "launches": 2880,
+          "total_ms": 441.253,
+          "share": null,
+          "note": "graft GEMM"
+        },
+        "ContractForward": {
+          "launches": 720,
+          "total_ms": 125.972,
+          "share": null,
+          "note": "graft GEMM"
+        },
+        "ContractWeightGrad": {
+          "launches": 720,
+          "total_ms": 424.897,
+          "share": null,
+          "note": "graft GEMM"
+        },
+        "ExpandInputGrad": {
+          "launches": 1440,
+          "total_ms": 183.772,
+          "share": null,
+          "note": "graft GEMM"
+        },
+        "ContractInputGrad": {
+          "launches": 720,
+          "total_ms": 187.111,
+          "share": null,
+          "note": "graft GEMM"
+        }
+      }
+    }
+  },
+  "kinds": {
+    "io": {
+      "color": "#6ad1ff",
+      "shape": "round-rectangle"
+    },
+    "frozen": {
+      "color": "#9aa7b3",
+      "shape": "round-rectangle"
+    },
+    "kernel": {
+      "color": "#74d99f",
+      "shape": "round-rectangle"
+    },
+    "tensor": {
+      "color": "#c7b8ff",
+      "shape": "round-rectangle"
+    },
+    "loss": {
+      "color": "#ffd166",
+      "shape": "diamond"
+    },
+    "optimizer": {
+      "color": "#ff8fbf",
+      "shape": "round-rectangle"
+    },
+    "state": {
+      "color": "#b9c6cf",
+      "shape": "round-rectangle"
+    }
+  },
+  "edge_kinds": {
+    "data": {
+      "color": "#6aa7ff",
+      "style": "solid"
+    },
+    "grad": {
+      "color": "#ffb15c",
+      "style": "solid"
+    },
+    "blocked": {
+      "color": "#ff7373",
+      "style": "dashed"
+    }
+  }
+}

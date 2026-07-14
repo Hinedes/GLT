@@ -1,0 +1,13 @@
+# LF-only for all source: host (ROCm/hipcc) choke on CRLF in .inc/.hpp/.hip.
+* text=auto eol=lf
+*.hip text eol=lf
+*.hpp text eol=lf
+*.inc text eol=lf
+*.cpp text eol=lf
+*.py  text eol=lf
+*.md  text eol=lf
+*.yml text eol=lf
+# Keep binary blobs untouched.
+*.bin binary
+*.safetensors binary
+*.7z binary

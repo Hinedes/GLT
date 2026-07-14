@@ -1,1 +1,5 @@
 .venv/
+runs/medical_all3.graft
+
+# nested/embedded repo, not part of GLT
+/grafting/

@@ -20,12 +20,18 @@ if [ -n "${TPHS_CMD:-}" ]; then
   log "TPHS step_time_s=${tphs_step:-NA} vram_mb=${tphs_vram:-NA} (rc=$RC)"
 fi
 
-verdict="TPHS_NOT_PROVIDED"; hip_wins=0
+verdict="TPHS_NOT_PROVIDED"; hip_wins=0; vram_ratio="null"
 if [ "$tphs_provided" -eq 1 ]; then
   if [ -n "$tphs_step" ] && [ -n "$hip_step" ] && fcmp '<=' "$hip_step" "$(awk "BEGIN{print $HIP_STEP_RATIO * $tphs_step}")"; then
     hip_wins=1; verdict="HIP_FASTER"
-  elif [ -n "$tphs_vram" ] && [ -n "$hip_vram" ] && fcmp '<' "$hip_vram" "$tphs_vram"; then
-    hip_wins=1; verdict="HIP_LOWER_VRAM"
+  elif [ -n "$tphs_vram" ] && [ -n "$hip_vram" ]; then
+    # material VRAM threshold: a win needs HIP <= HIP_VRAM_RATIO * TPHS, not any 1MB shave
+    vram_ratio=$(awk "BEGIN{print $hip_vram/$tphs_vram}")
+    if fcmp '<=' "$hip_vram" "$(awk "BEGIN{print $HIP_VRAM_RATIO * $tphs_vram}")"; then
+      hip_wins=1; verdict="HIP_LOWER_VRAM"
+    else
+      verdict="HIP_NOT_BETTER"
+    fi
   else
     verdict="HIP_NOT_BETTER"
   fi
@@ -34,6 +40,7 @@ fi
 emit_json "$OUT_DIR/bench.json" \
   tphs_provided="$tphs_provided" hip_step_s="${hip_step:-null}" hip_vram_mb="${hip_vram:-null}" \
   tphs_step_s="${tphs_step:-null}" tphs_vram_mb="${tphs_vram:-null}" \
-  hip_step_ratio="$HIP_STEP_RATIO" hip_wins="$hip_wins" verdict="$verdict"
-log "bench verdict=$verdict (tphs_provided=$tphs_provided)"
+  hip_step_ratio="$HIP_STEP_RATIO" hip_vram_ratio="$HIP_VRAM_RATIO" \
+  measured_vram_ratio="$vram_ratio" hip_wins="$hip_wins" verdict="$verdict"
+log "bench verdict=$verdict (tphs_provided=$tphs_provided; measured_vram_ratio=${vram_ratio})"
 exit 0

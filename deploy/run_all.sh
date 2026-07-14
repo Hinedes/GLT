@@ -30,7 +30,25 @@ python3 "$(dirname "$0")/classify_graft.py" "$GRAFT" >/dev/null 2>&1 && log "cla
 
 "$(dirname "$0")/certify.sh"  || finish 1
 "$(dirname "$0")/bands.sh"    || finish 1
-"$(dirname "$0")/train.sh"    || log "train: failed (reported, non-fatal)"
+"$(dirname "$0")/train.sh"    || finish 1                       # training failure is fatal (sparse gate depends on it)
+"$(dirname "$0")/eval_sparse.sh" || finish 1                    # THE science gate: fresh sparse graft must retain capability
 "$(dirname "$0")/bench.sh"    || log "bench: failed (reported, non-fatal)"
 
-finish 0
+# Final status must reflect the scientific verdict, not merely "scripts exited 0".
+# breakthrough == true  -> rc 0 (success)
+# breakthrough == false / UNDETERMINED -> rc 2 (non-success, nonzero)
+BT=$(python3 - <<'PY' 2>/dev/null || echo UNDETERMINED
+import json, os
+p = os.environ.get("RESULT_DIR", "/workspace/results") + "/summary.json"
+try:
+    print(str(json.load(open(p)).get("verdict", {}).get("breakthrough", "UNDETERMINED")))
+except Exception:
+    print("UNDETERMINED")
+PY
+)
+case "$BT" in
+  true) VERDICT_RC=0 ;;
+  *)    VERDICT_RC=2 ;;
+esac
+log "final verdict: breakthrough=$BT -> exit $VERDICT_RC"
+finish $VERDICT_RC

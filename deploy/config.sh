@@ -36,8 +36,10 @@ SEED=42
 CE_IMPROVE_MARGIN="${CE_IMPROVE_MARGIN:-0.0}"   # B.ce < A.ce - margin  (strict improvement)
 EPS_CE_BAKE="${EPS_CE_BAKE:-0.02}"              # |C.ce - B.ce| must be < this (BF16 bake budget; tune to eval length)
 EPS_CE_RELOAD="${EPS_CE_RELOAD:-1e-4}"          # |D.ce - A.ce| must be < this (exact reload)
-BAND_RETENTION="${BAND_RETENTION:-0.90}"        # band must retain >=90% of full gain
+BAND_RETENTION="${BAND_RETENTION:-0.90}"        # refined band must retain >=90% of full gain
+SPARSE_RETENTION="${SPARSE_RETENTION:-0.90}"    # fresh sparse graft must retain >=90% of full gain
 HIP_STEP_RATIO="${HIP_STEP_RATIO:-0.75}"        # HIP step <= 75% of TPHS (>=25% faster)
+HIP_VRAM_RATIO="${HIP_VRAM_RATIO:-0.80}"        # HIP VRAM <= 80% of TPHS to count as a VRAM win (material)
 LAYER_BUDGET="${LAYER_BUDGET:-12}"              # <=12 layers
 
 # ---- layer bands to probe (GPT step 2) ----

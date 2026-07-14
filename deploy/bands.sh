@@ -37,7 +37,9 @@ done
 results+="]"
 
 # refine best band down to <= LAYER_BUDGET by halving (explicit eval each half)
-refined=""
+# refined_ret starts at best_ret: if the best band is ALREADY within budget the
+# loop below never runs, and the deployed band (== best band) keeps best_ret.
+refined=""; refined_ret="$best_ret"
 if [ -n "$best_band" ] && [ "$FULL_IMPROVES" -eq 1 ]; then
   lo=${best_band%-*}; hi=${best_band#*-}
   while fcmp '>' "$(awk "BEGIN{print $hi-$lo+1}")" "$LAYER_BUDGET"; do
@@ -54,6 +56,7 @@ if [ -n "$best_band" ] && [ "$FULL_IMPROVES" -eq 1 ]; then
     ret_hi=$(awk "BEGIN{print ($A_CE - $ce_hi)/$DENOM}")
     if fcmp '>' "$ret_lo" "$ret_hi"; then hi=$mid; best_ce=$ce_lo; else lo=$((mid+1)); best_ce=$ce_hi; fi
     cur_ret=$(awk "BEGIN{print ($A_CE - $best_ce)/$DENOM}")
+    refined_ret="$cur_ret"                       # PROPAGATE: track the refined band's own retention
     log "refine -> [${lo},${hi}] retention=$cur_ret"
   done
   refined="${lo}-${hi}"
@@ -61,20 +64,22 @@ fi
 
 emit_json "$OUT_DIR/bands.json" \
   full_improves="$FULL_IMPROVES" full_gain="$GAIN" \
-  bands="@json:$results" best_band="$best_band" best_retention="$best_ret" refined_band="$refined"
+  bands="@json:$results" best_band="$best_band" best_retention="$best_ret" \
+  refined_band="$refined" refined_retention="$refined_ret"
 emit_json "$OUT_DIR/layer_map.json" \
   selected_band="$refined" selected_lo="${refined%-*}" selected_hi="${refined#*-}" \
-  retention="$best_ret" budget="$LAYER_BUDGET"
+  retention="$refined_ret" best_retention="$best_ret" budget="$LAYER_BUDGET"
 
-log "bands done: best=$best_band retention=$best_ret refined=$refined"
+log "bands done: best=$best_band retention=$best_ret refined=$refined refined_retention=$refined_ret"
 
-# gate: full graft must improve AND a band must retain >= BAND_RETENTION within budget
+# gate: full graft must improve AND the REFINED band must retain >= BAND_RETENTION within budget.
+# (Previously this tested best_ret, the unrefined band — bug fixed: refined_ret is what we deploy.)
 if [ "$FULL_IMPROVES" -eq 1 ] && [ -n "$refined" ] \
-   && fcmp '>=' "$best_ret" "$BAND_RETENTION" \
+   && fcmp '>=' "$refined_ret" "$BAND_RETENTION" \
    && fcmp '<=' "$(awk "BEGIN{print ${refined#*-}-${refined%-*}+1}")" "$LAYER_BUDGET"; then
-  log "BANDS: PASS (retention $best_ret >= $BAND_RETENTION, <= $LAYER_BUDGET layers)"
+  log "BANDS: PASS (refined retention $refined_ret >= $BAND_RETENTION, <= $LAYER_BUDGET layers)"
   exit 0
 else
-  log "BANDS: FAIL (full_improves=$FULL_IMPROVES; no band retains >= $BAND_RETENTION within $LAYER_BUDGET layers)"
+  log "BANDS: FAIL (full_improves=$FULL_IMPROVES; refined retention $refined_ret < $BAND_RETENTION or > $LAYER_BUDGET layers)"
   exit 1
 fi

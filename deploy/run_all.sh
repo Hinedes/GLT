@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+source "$(dirname "$0")/config.sh"
+source "$(dirname "$0")/lib.sh"
+mkdir -p "$OUT_DIR" "$RESULT_DIR"
+T0=$(now_s)
+log "==== run_all start ===="
+
+# Fail fast if the few non-binary tools we rely on are missing.
+command -v python3 >/dev/null 2>&1 || { log "FATAL: python3 missing"; exit 1; }
+python3 -c "import numpy" 2>/dev/null || { log "FATAL: python3 numpy missing (classify/make_band_graft need it)"; exit 1; }
+command -v sha256sum >/dev/null 2>&1 || { log "FATAL: sha256sum missing"; exit 1; }
+
+finish() {
+  local rc=$1
+  python3 "$(dirname "$0")/aggregate.py" >/dev/null 2>&1 || true
+  T1=$(now_s)
+  log "==== run_all end rc=$rc  total=$(elapsed "$T0" "$T1")s ===="
+  echo "DROPLET_DONE ${RESULT_DIR}/droplet_results.tar.gz $(elapsed "$T0" "$T1")"
+  if [ -n "${EXFIL:-}" ]; then
+    log "exfil -> $EXFIL"
+    scp -o StrictHostKeyChecking=no "${RESULT_DIR}/droplet_results.tar.gz" "$EXFIL" 2>&1 \
+      && log "exfil OK" || log "exfil FAILED (non-fatal)"
+  fi
+  exit $rc
+}
+
+"$(dirname "$0")/verify.sh" || finish 1
+python3 "$(dirname "$0")/classify_graft.py" "$GRAFT" >/dev/null 2>&1 && log "classify: done" || log "classify: skipped/failed"
+
+"$(dirname "$0")/certify.sh"  || finish 1
+"$(dirname "$0")/bands.sh"    || finish 1
+"$(dirname "$0")/train.sh"    || log "train: failed (reported, non-fatal)"
+"$(dirname "$0")/bench.sh"    || log "bench: failed (reported, non-fatal)"
+
+finish 0

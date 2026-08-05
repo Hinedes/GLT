@@ -1,0 +1,6 @@
+{
+  "command": "/opt/venv/bin/python /workspace/GLT/experiments/kyrgyz_pipeline_sanity/run_sanity.py",
+  "error": "cache parity mismatch; see cache_parity.json",
+  "error_type": "RuntimeError",
+  "traceback": "Traceback (most recent call last):\n  File \"/workspace/GLT/experiments/kyrgyz_pipeline_sanity/run_sanity.py\", line 438, in main\n    parity = cache_parity(device, amp_dtype, model_dtype, amp_type, resolved, tokenizer, eos_id)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/GLT/experiments/kyrgyz_pipeline_sanity/run_sanity.py\", line 200, in cache_parity\n    raise RuntimeError(\"cache parity mismatch; see cache_parity.json\")\nRuntimeError: cache parity mismatch; see cache_parity.json\n"
+}

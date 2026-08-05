@@ -1,0 +1,9 @@
+{
+  "artifact_dir": "/workspace/GLT/experiments/kyrgyz_lora_control/lora_step_0200",
+  "files": {
+    "README.md": "4e72ac623b80ff3f7a10bdff4fc2a47f65127c899e120f733835b1ec5e413b4d",
+    "adapter_config.json": "9d55ccd95159b3e50d3291880baeb1b9ed39dd264c26908b2d917f1f6c585476",
+    "adapter_model.safetensors": "6ac2ca1421fe5c8f7b15724933d62df955f162cd2491c82b22e6b8ef7d1f006d"
+  },
+  "sha256_manifest": "7701b62ca178c72e77e92c95584dfef0edf2e799562968daf3c3d9d74bd19766"
+}

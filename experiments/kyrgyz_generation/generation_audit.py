@@ -290,7 +290,7 @@ def main():
     model = AutoModelForCausalLM.from_pretrained(
         resolved, trust_remote_code=True, dtype=model_dtype
     ).to(device)
-    model.config.use_cache = True
+    model.config.use_cache = False
     layers = discover_ffn_layers(model, metadata["layer_range"])
     hidden = getattr(model.config, "hidden_size", None)
     slices = compute_axis_slices(layers, metadata["domain_index"], metadata["max_domains"], hidden)
@@ -378,9 +378,11 @@ def main():
                 "base_unchanged": True,
                 "match": True,
             })
+            model.config.use_cache = True
             new_records = generate_condition_records(
                 model, prompts, arrays, checkpoint_name, checkpoint, tokenizer, eos_id, args.seed, device
             )
+            model.config.use_cache = False
             records.extend(new_records)
             for row in new_records:
                 generation_file.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -397,6 +399,7 @@ def main():
         injector.detach()
         if base_signature(model) != model_signature:
             raise AssertionError("base parameters changed before base generation")
+        model.config.use_cache = True
         base_records = generate_condition_records(
             model, prompts, arrays, "base", None, tokenizer, eos_id, args.seed, device
         )

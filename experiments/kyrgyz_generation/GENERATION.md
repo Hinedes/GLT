@@ -10,6 +10,7 @@ These are raw side-by-side outputs, not a capability claim.
 - Fixed prompts: 20 heldout Kyrgyz, 20 FLORES Kyrgyz, 20 English OOD; 60 prompts total.
 - Decoding: greedy and temperature `0.7`, top-p `0.9`, seed `42`, maximum 128 new tokens.
 - Raw records: `840` parseable JSONL rows; metrics contain `42` checkpoint/source/decoder groups.
+- Wall-clock markers: checkpoint 50 finished at `2026-08-05 17:01:13 UTC`, checkpoint 2000 at `17:46:54 UTC`, and the flushed generation JSONL finished at `21:15:00 UTC`. The SSH wrapper did not capture a clean process start/end duration; these timestamps are the recorded runtime evidence.
 - Reload integrity: all six persistent checkpoint CE/PPL comparisons matched pre-save values with maximum absolute difference `0.0`; fresh-process checks for steps 50, 100, 200, and 500 also matched `0.0`.
 - State swap: step 50 and step 100 injector signatures were distinct; every load zeroed all delta tensors before copying the checkpoint.
 

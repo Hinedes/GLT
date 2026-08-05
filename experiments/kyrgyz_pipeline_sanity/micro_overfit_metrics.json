@@ -1,0 +1,78 @@
+{
+  "adapter_dir": "/workspace/GLT/experiments/kyrgyz_pipeline_sanity/micro_overfit_lora",
+  "adapter_files": {
+    "README.md": "4e72ac623b80ff3f7a10bdff4fc2a47f65127c899e120f733835b1ec5e413b4d",
+    "adapter_config.json": "c065ade98b5018ffb2d3eb5b99945a09cde709dc431a9e9fb2205582f5312710",
+    "adapter_model.safetensors": "abdd16d9c748efda98885b225855e484b7bdc3bc65ebb46ea9c12dcc9f015a1a"
+  },
+  "adapter_sha256_manifest": "108b5b1b6d798e51feb8cdb4cc73c9a231dffe996898edfcc1665c978969c118",
+  "alpha": 64,
+  "autocast_dtype": "torch.bfloat16",
+  "batch": 1,
+  "bias": "none",
+  "continuation_eval": {
+    "ce": 0.014994445547927171,
+    "ppl": 1.0151074262345121,
+    "supervised_tokens": 2048
+  },
+  "dropout": 0.0,
+  "final_training_loss": 0.0015166960656642914,
+  "generation": {
+    "eos_rate": 0.0,
+    "exact_token_match_rate": 0.88916015625,
+    "invalid_decode_count": 1,
+    "max_new_tokens": 128,
+    "mean_prefix_token_match_length": 113.5,
+    "mean_repetition_rate": 0.46337890625,
+    "records": 16,
+    "use_cache": false
+  },
+  "learning_rate": 0.0002,
+  "loss_at_steps": {
+    "1": 4.319334506988525,
+    "100": 0.38742396235466003,
+    "250": 0.02950780652463436,
+    "500": 0.0015166960656642914
+  },
+  "model": "/workspace/model/real_SmolLM3-3B",
+  "optimizer": "AdamW",
+  "peak_vram_allocated_mb": 7802.27587890625,
+  "peak_vram_reserved_mb": 8068.0,
+  "rank": 32,
+  "seed": 42,
+  "selected_data_indices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "selection_rule": "first 16 training sequences with no EOS, valid decode, and >=50% Cyrillic letters in the isolated first 192 tokens",
+  "sequence_geometry": {
+    "continuation_tokens": 128,
+    "input_tokens": 192,
+    "prompt_tokens": 64
+  },
+  "steps": 500,
+  "target_modules": [
+    "gate_proj",
+    "up_proj",
+    "down_proj"
+  ],
+  "train_bin": "/workspace/kyrgyz_train.bin",
+  "train_bin_sha256": "c63f76b1f870525c651f2743df54b0b6f75f7e26d02fc359219a88f309c03d72",
+  "trainable_parameters": 45121536,
+  "training_wall_time_s": 78.72301860013977,
+  "weight_decay": 0.01
+}

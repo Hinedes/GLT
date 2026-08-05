@@ -105,10 +105,11 @@ def signature_digest(signature):
     return hashlib.sha256(repr(signature).encode("utf-8")).hexdigest()
 
 
-def generate_batch(model, input_ids, tokenizer, eos_id, sampled, seed, device):
+def generate_batch(model, input_ids, eos_id, sampled, seed, device, amp_type, amp_dtype):
     torch.manual_seed(seed)
     kwargs = {
         "input_ids": input_ids.to(device),
+        "attention_mask": torch.ones_like(input_ids, device=device),
         "max_new_tokens": 128,
         "do_sample": sampled,
         "eos_token_id": eos_id,
@@ -117,7 +118,11 @@ def generate_batch(model, input_ids, tokenizer, eos_id, sampled, seed, device):
     }
     if sampled:
         kwargs.update({"temperature": 0.7, "top_p": 0.9})
-    with torch.inference_mode():
+    with torch.inference_mode(), torch.amp.autocast(
+        device_type=amp_type,
+        dtype=amp_dtype,
+        enabled=amp_type != "cpu" and amp_dtype != torch.float32,
+    ):
         outputs = model.generate(**kwargs)
     result = []
     for output, prompt in zip(outputs.tolist(), input_ids.tolist()):
@@ -207,13 +212,18 @@ def write_generation_md(path, records, checkpoints):
                 handle.write(f"**Sampled:** {sampled['output']}\n\n")
 
 
-def generate_condition_records(model, prompts, arrays, checkpoint_name, checkpoint_path, tokenizer, eos_id, seed, device):
+def generate_condition_records(
+    model, prompts, arrays, checkpoint_name, checkpoint_path, tokenizer, eos_id, seed,
+    device, amp_type, amp_dtype
+):
     records = []
     for sampled, decoding_name in ((False, "greedy"), (True, "temperature_0.7_top_p_0.9")):
         for source in arrays:
             rows = [row for row in prompts if row["source"] == source]
             input_ids = torch.tensor([row["prompt_token_ids"] for row in rows], dtype=torch.long)
-            generated = generate_batch(model, input_ids, tokenizer, eos_id, sampled, seed, device)
+            generated = generate_batch(
+                model, input_ids, eos_id, sampled, seed, device, amp_type, amp_dtype
+            )
             for row, (generated_ids, termination) in zip(rows, generated):
                 output, invalid = decode(tokenizer, generated_ids)
                 records.append({
@@ -380,7 +390,8 @@ def main():
             })
             model.config.use_cache = True
             new_records = generate_condition_records(
-                model, prompts, arrays, checkpoint_name, checkpoint, tokenizer, eos_id, args.seed, device
+                model, prompts, arrays, checkpoint_name, checkpoint, tokenizer, eos_id, args.seed,
+                device, amp_type, amp_dtype
             )
             model.config.use_cache = False
             records.extend(new_records)
@@ -401,7 +412,8 @@ def main():
             raise AssertionError("base parameters changed before base generation")
         model.config.use_cache = True
         base_records = generate_condition_records(
-            model, prompts, arrays, "base", None, tokenizer, eos_id, args.seed, device
+            model, prompts, arrays, "base", None, tokenizer, eos_id, args.seed,
+            device, amp_type, amp_dtype
         )
         records.extend(base_records)
         for row in base_records:

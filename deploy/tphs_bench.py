@@ -337,6 +337,37 @@ def verify_data_manifest(path, named_paths):
     print(f"data_manifest_verified={manifest_path}")
 
 
+def model_fingerprint(path):
+    root = Path(path)
+    digest = hashlib.sha256()
+    files = sorted(p for p in root.rglob("*") if p.is_file()) if root.is_dir() else [root]
+    for file_path in files:
+        relative = file_path.relative_to(root) if root.is_dir() else file_path.name
+        digest.update(str(relative).encode("utf-8"))
+        digest.update(bytes.fromhex(sha256_file(file_path)))
+    return digest.hexdigest()
+
+
+def parse_checkpoint_steps(raw, steps):
+    if not raw.strip():
+        return ()
+    values = tuple(sorted({int(value) for value in raw.split(",") if value.strip()}))
+    if any(value <= 0 or value > steps for value in values):
+        raise ValueError(f"checkpoint steps must be within 1..{steps}: {values}")
+    return values
+
+
+def save_axis_checkpoint(path, injector, metadata):
+    payload = {
+        "metadata": metadata,
+        "deltas": {name: parameter.detach().cpu() for name, parameter in injector.named_parameters()},
+    }
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(payload, path)
+    del payload
+
+
 def evaluate_sequences(model, arr, max_len, pad_id, batch, device, amp_type, amp_dtype):
     total_loss = 0.0
     total_tokens = 0
@@ -357,6 +388,37 @@ def evaluate_sequences(model, arr, max_len, pad_id, batch, device, amp_type, amp
             total_tokens += labels.numel()
     ce = total_loss / total_tokens
     return {"ce": ce, "ppl": math.exp(ce)}
+
+
+def evaluate_injector(
+    model, injector, heldout_arr, external_arr, ood_arr, max_len, pad_id, batch,
+    device, amp_type, amp_dtype, base_metrics=None
+):
+    was_training = model.training
+    model.eval()
+    injector.detach()
+    if base_metrics is None:
+        base_metrics = {
+            "heldout_target": evaluate_sequences(model, heldout_arr, max_len, pad_id, batch, device, amp_type, amp_dtype),
+            "ood": evaluate_sequences(model, ood_arr, max_len, pad_id, batch, device, amp_type, amp_dtype),
+        }
+        if external_arr is not None:
+            base_metrics["external_target"] = evaluate_sequences(
+                model, external_arr, max_len, pad_id, batch, device, amp_type, amp_dtype
+            )
+    injector.attach()
+    condition_metrics = {
+        "heldout_target": evaluate_sequences(model, heldout_arr, max_len, pad_id, batch, device, amp_type, amp_dtype),
+        "ood": evaluate_sequences(model, ood_arr, max_len, pad_id, batch, device, amp_type, amp_dtype),
+    }
+    if external_arr is not None:
+        condition_metrics["external_target"] = evaluate_sequences(
+            model, external_arr, max_len, pad_id, batch, device, amp_type, amp_dtype
+        )
+    injector.clear_saved_energy()
+    if was_training:
+        model.train()
+    return base_metrics, condition_metrics
 
 
 def write_metrics(path, metrics):
@@ -388,6 +450,15 @@ def main():
     lr = float(os.environ.get("TPHS_LR", "2e-4"))
     lam = float(os.environ.get("TPHS_LAMBDA", "5.0"))
     steps = int(os.environ.get("TPHS_STEPS", "100"))
+    checkpoint_steps = parse_checkpoint_steps(os.environ.get("TPHS_CHECKPOINT_STEPS", ""), steps)
+    checkpoint_dir = Path(
+        os.environ.get("TPHS_CHECKPOINT_DIR", "experiments/kyrgyz_generation/checkpoints")
+    )
+    checkpoint_metrics_path = os.environ.get(
+        "TPHS_CHECKPOINT_METRICS_JSON", "experiments/kyrgyz_generation/checkpoint_metrics.json"
+    )
+    if checkpoint_steps and support_mode != "axis":
+        raise ValueError("experimental checkpointing is only supported for TPHS_SUPPORT_MODE=axis")
     max_len = int(os.environ.get("TPHS_MAX_LEN", "512"))
     domain_index = int(os.environ.get("TPHS_DOMAIN_INDEX", "0"))
     max_domains = int(os.environ.get("TPHS_MAX_DOMAINS", "4"))
@@ -411,6 +482,8 @@ def main():
     if external_bin:
         named_paths["kyrgyz_flores"] = external_bin
     verify_data_manifest(data_manifest, named_paths)
+    base_fingerprint = model_fingerprint(model_path) if checkpoint_steps else None
+    checkpoint_records = []
 
     device = get_device("auto")
     amp_dtype = get_amp_dtype(device)
@@ -483,6 +556,38 @@ def main():
             )
         injector = TripletDeltaInjector(layers, groups, indices)
 
+    checkpoint_metadata_base = None
+    if checkpoint_steps:
+        checkpoint_metadata_base = {
+            "base_fingerprint": base_fingerprint,
+            "model_path": model_path,
+            "support_mode": support_mode,
+            "max_domains": max_domains,
+            "domain_index": domain_index,
+            "layer_range": layer_range,
+            "projection_geometry": {
+                "axis_slices": slices,
+                "projections": {
+                    name: {
+                        "category": info["category"],
+                        "shape": list(info["module"].weight.shape),
+                    }
+                    for name, info in layers.items()
+                },
+            },
+            "model_dtype": str(next(model.parameters()).dtype),
+            "delta_dtype": "torch.float32",
+            "seed": seed,
+            "training": {
+                "lr": lr,
+                "weight_decay": 0.01,
+                "lambda_silence": lam,
+                "max_len": max_len,
+                "batch": batch,
+                "eval_batch": eval_batch,
+            },
+        }
+
     n_host_train = sum(p.requires_grad for p in model.parameters())
     n_delta_train = sum(p.numel() for p in injector.parameters() if p.requires_grad)
     assert n_host_train == 0, "host model must be frozen (requires_grad==0)"
@@ -508,6 +613,7 @@ def main():
     start_ev = torch.cuda.Event(enable_timing=True) if gpu_timing else None
     end_ev = torch.cuda.Event(enable_timing=True) if gpu_timing else None
     last_lm_loss = last_silence_loss = float("nan")
+    checkpoint_base_metrics = None
 
     for step in range(1, steps + 1):
         try:
@@ -577,27 +683,38 @@ def main():
             free, total = torch.cuda.mem_get_info()
             peak_used = max(peak_used, int(total - free))
 
+        if step in checkpoint_steps:
+            checkpoint_base_metrics, checkpoint_condition_metrics = evaluate_injector(
+                model, injector, heldout_arr, external_arr, ood_arr, max_len, int(pad_id),
+                eval_batch, device, amp_type, amp_dtype, checkpoint_base_metrics
+            )
+            checkpoint_path = checkpoint_dir / f"axis_step_{step:04d}.pt"
+            checkpoint_metadata = dict(checkpoint_metadata_base)
+            checkpoint_metadata.update({
+                "step": step,
+                "checkpoint_path": str(checkpoint_path),
+                "base_metrics": checkpoint_base_metrics,
+                "condition_metrics": checkpoint_condition_metrics,
+            })
+            save_axis_checkpoint(checkpoint_path, injector, checkpoint_metadata)
+            checkpoint_records.append({
+                "step": step,
+                "path": str(checkpoint_path),
+                "base": checkpoint_base_metrics,
+                "condition": checkpoint_condition_metrics,
+            })
+            write_metrics(checkpoint_metrics_path, {
+                "metadata": checkpoint_metadata_base,
+                "checkpoints": checkpoint_records,
+            })
+            print(f"checkpoint_saved={checkpoint_path}")
+
     step_time_s = float(statistics.median(times)) if times else 0.0
     vram_mb = peak_used // (1024 * 1024)
-    model.eval()
-    injector.detach()
-    base_metrics = {
-        "heldout_target": evaluate_sequences(model, heldout_arr, max_len, int(pad_id), eval_batch, device, amp_type, amp_dtype),
-        "ood": evaluate_sequences(model, ood_arr, max_len, int(pad_id), eval_batch, device, amp_type, amp_dtype),
-    }
-    if external_arr is not None:
-        base_metrics["external_target"] = evaluate_sequences(
-            model, external_arr, max_len, int(pad_id), eval_batch, device, amp_type, amp_dtype
-        )
-    injector.attach()
-    condition_metrics = {
-        "heldout_target": evaluate_sequences(model, heldout_arr, max_len, int(pad_id), eval_batch, device, amp_type, amp_dtype),
-        "ood": evaluate_sequences(model, ood_arr, max_len, int(pad_id), eval_batch, device, amp_type, amp_dtype),
-    }
-    if external_arr is not None:
-        condition_metrics["external_target"] = evaluate_sequences(
-            model, external_arr, max_len, int(pad_id), eval_batch, device, amp_type, amp_dtype
-        )
+    base_metrics, condition_metrics = evaluate_injector(
+        model, injector, heldout_arr, external_arr, ood_arr, max_len, int(pad_id),
+        eval_batch, device, amp_type, amp_dtype, checkpoint_base_metrics
+    )
     metrics = {
         "support_mode": support_mode,
         "seed": seed,
@@ -623,6 +740,9 @@ def main():
         "peak_vram_mb": vram_mb,
         "base": base_metrics,
         "condition": condition_metrics,
+        "checkpoint_steps": list(checkpoint_steps),
+        "checkpoint_dir": str(checkpoint_dir) if checkpoint_steps else None,
+        "checkpoints": checkpoint_records,
     }
     print(f"final_training_lm_loss={last_lm_loss:.6f}")
     print(f"final_silence_loss={last_silence_loss:.6f}")

@@ -19,6 +19,7 @@
 # All knobs come from environment variables (set by tphs_run.sh / upload):
 #   TPHS_SRC, TPHS_MODEL, TPHS_TARGET_BIN, TPHS_HELDOUT_BIN, TPHS_OOD_BINS,
 #   TPHS_EXTERNAL_BIN, TPHS_DATA_MANIFEST, TPHS_LAYER_RANGE, TPHS_BATCH,
+#   TPHS_EVAL_BATCH,
 #   TPHS_LR, TPHS_LAMBDA, TPHS_STEPS, TPHS_MAX_LEN, TPHS_DOMAIN_INDEX,
 #   TPHS_MAX_DOMAINS, TPHS_SUPPORT_MODE
 # ============================================================================
@@ -383,6 +384,7 @@ def main():
     )
     layer_range = os.environ.get("TPHS_LAYER_RANGE")
     batch = int(os.environ.get("TPHS_BATCH", "16"))
+    eval_batch = int(os.environ.get("TPHS_EVAL_BATCH", str(max(batch, 8))))
     lr = float(os.environ.get("TPHS_LR", "2e-4"))
     lam = float(os.environ.get("TPHS_LAMBDA", "5.0"))
     steps = int(os.environ.get("TPHS_STEPS", "100"))
@@ -580,21 +582,21 @@ def main():
     model.eval()
     injector.detach()
     base_metrics = {
-        "heldout_target": evaluate_sequences(model, heldout_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype),
-        "ood": evaluate_sequences(model, ood_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype),
+        "heldout_target": evaluate_sequences(model, heldout_arr, max_len, int(pad_id), eval_batch, device, amp_type, amp_dtype),
+        "ood": evaluate_sequences(model, ood_arr, max_len, int(pad_id), eval_batch, device, amp_type, amp_dtype),
     }
     if external_arr is not None:
         base_metrics["external_target"] = evaluate_sequences(
-            model, external_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype
+            model, external_arr, max_len, int(pad_id), eval_batch, device, amp_type, amp_dtype
         )
     injector.attach()
     condition_metrics = {
-        "heldout_target": evaluate_sequences(model, heldout_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype),
-        "ood": evaluate_sequences(model, ood_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype),
+        "heldout_target": evaluate_sequences(model, heldout_arr, max_len, int(pad_id), eval_batch, device, amp_type, amp_dtype),
+        "ood": evaluate_sequences(model, ood_arr, max_len, int(pad_id), eval_batch, device, amp_type, amp_dtype),
     }
     if external_arr is not None:
         condition_metrics["external_target"] = evaluate_sequences(
-            model, external_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype
+            model, external_arr, max_len, int(pad_id), eval_batch, device, amp_type, amp_dtype
         )
     metrics = {
         "support_mode": support_mode,
@@ -604,6 +606,7 @@ def main():
         "weight_decay": 0.01,
         "lambda_silence": lam,
         "max_len": max_len,
+        "eval_batch": eval_batch,
         "layer_range": layer_range,
         "paths": {
             "model": model_path,

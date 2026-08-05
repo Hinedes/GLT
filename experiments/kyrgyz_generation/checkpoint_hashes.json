@@ -1,0 +1,12 @@
+{
+  "host": "root@36.150.116.206:31101",
+  "checkpoint_dir": "/workspace/GLT/experiments/kyrgyz_generation/checkpoints",
+  "checkpoints": {
+    "axis_step_0050.pt": "dd1bc07aa5e51ae51de70004312180fa2f55c6da5472185303f071a5b1e9d3a3",
+    "axis_step_0100.pt": "8ea8302a18f18f1ac0158f6c945d137ef8ff2a55ae937ad0ef58ec971c29e05b",
+    "axis_step_0200.pt": "dd27003b2578b7c40ddd50b7f11fda1f77721717e3afba25c3da21921b17c80d",
+    "axis_step_0500.pt": "6cba5747b4859d5016e6cb51fb5c7941308cb360d92130cfb2e2871275778664",
+    "axis_step_1000.pt": "fd6f22b1291affae0be26d7505d8b71718c5d125f015fd18bf16ea19cd3c8621",
+    "axis_step_2000.pt": "f57bc713ea6e6f9b4c72c70d5ed47326c2ba3ac4bbee690c474211390b833a8e"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "absolute_differences": {
+    "external_target": {
+      "ce": 0.0,
+      "ppl": 0.0
+    },
+    "heldout_target": {
+      "ce": 0.0,
+      "ppl": 0.0
+    },
+    "ood": {
+      "ce": 0.0,
+      "ppl": 0.0
+    }
+  },
+  "checkpoint": "experiments/kyrgyz_generation/checkpoints/axis_step_0050.pt",
+  "condition": {
+    "external_target": {
+      "ce": 2.975336461259548,
+      "ppl": 19.59621550786619
+    },
+    "heldout_target": {
+      "ce": 2.8079943292994787,
+      "ppl": 16.57663757863619
+    },
+    "ood": {
+      "ce": 2.6397232955682535,
+      "ppl": 14.009326628605777
+    }
+  },
+  "expected": {
+    "external_target": {
+      "ce": 2.975336461259548,
+      "ppl": 19.59621550786619
+    },
+    "heldout_target": {
+      "ce": 2.8079943292994787,
+      "ppl": 16.57663757863619
+    },
+    "ood": {
+      "ce": 2.6397232955682535,
+      "ppl": 14.009326628605777
+    }
+  },
+  "match": true,
+  "max_absolute_difference": 0.0,
+  "step": 50
+}

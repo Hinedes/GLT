@@ -1,0 +1,257 @@
+{
+  "base": {
+    "external_target": {
+      "ce": 3.825238965293779,
+      "ppl": 45.843754123669505
+    },
+    "heldout_target": {
+      "ce": 3.5182459844301825,
+      "ppl": 33.725221990024444
+    },
+    "ood": {
+      "ce": 2.673446165722177,
+      "ppl": 14.4898175632036
+    }
+  },
+  "checkpoint_dir": "/workspace/GLT/experiments/kyrgyz_generation/checkpoints",
+  "checkpoint_steps": [
+    50,
+    100,
+    200,
+    500,
+    1000,
+    2000
+  ],
+  "checkpoints": [
+    {
+      "base": {
+        "external_target": {
+          "ce": 3.825238965293779,
+          "ppl": 45.843754123669505
+        },
+        "heldout_target": {
+          "ce": 3.5182459844301825,
+          "ppl": 33.725221990024444
+        },
+        "ood": {
+          "ce": 2.673446165722177,
+          "ppl": 14.4898175632036
+        }
+      },
+      "condition": {
+        "external_target": {
+          "ce": 2.975336461259548,
+          "ppl": 19.59621550786619
+        },
+        "heldout_target": {
+          "ce": 2.8079943292994787,
+          "ppl": 16.57663757863619
+        },
+        "ood": {
+          "ce": 2.6397232955682535,
+          "ppl": 14.009326628605777
+        }
+      },
+      "path": "/workspace/GLT/experiments/kyrgyz_generation/checkpoints/axis_step_0050.pt",
+      "step": 50
+    },
+    {
+      "base": {
+        "external_target": {
+          "ce": 3.825238965293779,
+          "ppl": 45.843754123669505
+        },
+        "heldout_target": {
+          "ce": 3.5182459844301825,
+          "ppl": 33.725221990024444
+        },
+        "ood": {
+          "ce": 2.673446165722177,
+          "ppl": 14.4898175632036
+        }
+      },
+      "condition": {
+        "external_target": {
+          "ce": 2.777251753016303,
+          "ppl": 16.074782713967405
+        },
+        "heldout_target": {
+          "ce": 2.6392074331145463,
+          "ppl": 14.002101606715343
+        },
+        "ood": {
+          "ce": 2.628811440589143,
+          "ppl": 13.857289898020726
+        }
+      },
+      "path": "/workspace/GLT/experiments/kyrgyz_generation/checkpoints/axis_step_0100.pt",
+      "step": 100
+    },
+    {
+      "base": {
+        "external_target": {
+          "ce": 3.825238965293779,
+          "ppl": 45.843754123669505
+        },
+        "heldout_target": {
+          "ce": 3.5182459844301825,
+          "ppl": 33.725221990024444
+        },
+        "ood": {
+          "ce": 2.673446165722177,
+          "ppl": 14.4898175632036
+        }
+      },
+      "condition": {
+        "external_target": {
+          "ce": 2.572027917320955,
+          "ppl": 13.092347737067065
+        },
+        "heldout_target": {
+          "ce": 2.45027301922703,
+          "ppl": 11.59151099262131
+        },
+        "ood": {
+          "ce": 2.6453624105266864,
+          "ppl": 14.08854999685591
+        }
+      },
+      "path": "/workspace/GLT/experiments/kyrgyz_generation/checkpoints/axis_step_0200.pt",
+      "step": 200
+    },
+    {
+      "base": {
+        "external_target": {
+          "ce": 3.825238965293779,
+          "ppl": 45.843754123669505
+        },
+        "heldout_target": {
+          "ce": 3.5182459844301825,
+          "ppl": 33.725221990024444
+        },
+        "ood": {
+          "ce": 2.673446165722177,
+          "ppl": 14.4898175632036
+        }
+      },
+      "condition": {
+        "external_target": {
+          "ce": 2.3777072592234942,
+          "ppl": 10.780158399709432
+        },
+        "heldout_target": {
+          "ce": 2.2309856452120727,
+          "ppl": 9.309036966835892
+        },
+        "ood": {
+          "ce": 4.242923168053599,
+          "ppl": 69.61103948505242
+        }
+      },
+      "path": "/workspace/GLT/experiments/kyrgyz_generation/checkpoints/axis_step_0500.pt",
+      "step": 500
+    },
+    {
+      "base": {
+        "external_target": {
+          "ce": 3.825238965293779,
+          "ppl": 45.843754123669505
+        },
+        "heldout_target": {
+          "ce": 3.5182459844301825,
+          "ppl": 33.725221990024444
+        },
+        "ood": {
+          "ce": 2.673446165722177,
+          "ppl": 14.4898175632036
+        }
+      },
+      "condition": {
+        "external_target": {
+          "ce": 2.265837993083612,
+          "ppl": 9.639198799502129
+        },
+        "heldout_target": {
+          "ce": 2.0776600193837385,
+          "ppl": 7.985760509382364
+        },
+        "ood": {
+          "ce": 7.331530350761637,
+          "ppl": 1527.7179282604397
+        }
+      },
+      "path": "/workspace/GLT/experiments/kyrgyz_generation/checkpoints/axis_step_1000.pt",
+      "step": 1000
+    },
+    {
+      "base": {
+        "external_target": {
+          "ce": 3.825238965293779,
+          "ppl": 45.843754123669505
+        },
+        "heldout_target": {
+          "ce": 3.5182459844301825,
+          "ppl": 33.725221990024444
+        },
+        "ood": {
+          "ce": 2.673446165722177,
+          "ppl": 14.4898175632036
+        }
+      },
+      "condition": {
+        "external_target": {
+          "ce": 2.1476730921737897,
+          "ppl": 8.564905446328273
+        },
+        "heldout_target": {
+          "ce": 1.9189686224651896,
+          "ppl": 6.813927112574621
+        },
+        "ood": {
+          "ce": 8.440101361321377,
+          "ppl": 4629.024164785975
+        }
+      },
+      "path": "/workspace/GLT/experiments/kyrgyz_generation/checkpoints/axis_step_2000.pt",
+      "step": 2000
+    }
+  ],
+  "condition": {
+    "external_target": {
+      "ce": 2.1476730921737897,
+      "ppl": 8.564905446328273
+    },
+    "heldout_target": {
+      "ce": 1.9189686224651896,
+      "ppl": 6.813927112574621
+    },
+    "ood": {
+      "ce": 8.440101361321377,
+      "ppl": 4629.024164785975
+    }
+  },
+  "eval_batch": 8,
+  "final_silence_loss": 0.006771299988031387,
+  "final_training_lm_loss": 1.454716682434082,
+  "lambda_silence": 5.0,
+  "layer_range": "0-35",
+  "lr": 0.0002,
+  "max_len": 512,
+  "paths": {
+    "external": "/workspace/kyrgyz_flores.bin",
+    "heldout": "/workspace/kyrgyz_heldout.bin",
+    "manifest": "/workspace/GLT/experiments/kyrgyz_support_geometry/data_manifest.json",
+    "model": "/workspace/model/real_SmolLM3-3B",
+    "ood": [
+      "/workspace/kyrgyz_english_ood.bin"
+    ],
+    "target": "/workspace/kyrgyz_train.bin"
+  },
+  "peak_vram_mb": 20920,
+  "seed": 42,
+  "step_time_s": 0.45725640869140627,
+  "steps": 2000,
+  "support_mode": "axis",
+  "trainable_params": 152174592,
+  "weight_decay": 0.01
+}

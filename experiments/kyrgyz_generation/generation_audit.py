@@ -206,10 +206,10 @@ def write_generation_md(path, records, checkpoints):
                 sample_id = greedy["sample_id"]
                 sampled = by_key[(checkpoint, sample_id, "temperature_0.7_top_p_0.9")]
                 handle.write(f"### Example {index + 1}: `{sample_id}`\n\n")
-                handle.write(f"**Prompt:** {greedy['prompt']}\n\n")
-                handle.write(f"**Reference:** {greedy['reference']}\n\n")
-                handle.write(f"**Greedy:** {greedy['output']}\n\n")
-                handle.write(f"**Sampled:** {sampled['output']}\n\n")
+                handle.write(f"**Prompt:** {greedy['prompt'].rstrip()}\n\n")
+                handle.write(f"**Reference:** {greedy['reference'].rstrip()}\n\n")
+                handle.write(f"**Greedy:** {greedy['output'].rstrip()}\n\n")
+                handle.write(f"**Sampled:** {sampled['output'].rstrip()}\n\n")
 
 
 def generate_condition_records(

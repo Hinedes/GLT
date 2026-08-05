@@ -1,0 +1,303 @@
+{
+  "checks": [
+    {
+      "absolute_differences": {
+        "external_target": {
+          "ce": 0.0,
+          "ppl": 0.0
+        },
+        "heldout_target": {
+          "ce": 0.0,
+          "ppl": 0.0
+        },
+        "ood": {
+          "ce": 0.0,
+          "ppl": 0.0
+        }
+      },
+      "base_unchanged": true,
+      "checkpoint": "experiments/kyrgyz_generation/checkpoints/axis_step_0050.pt",
+      "condition": {
+        "external_target": {
+          "ce": 2.975336461259548,
+          "ppl": 19.59621550786619
+        },
+        "heldout_target": {
+          "ce": 2.8079943292994787,
+          "ppl": 16.57663757863619
+        },
+        "ood": {
+          "ce": 2.6397232955682535,
+          "ppl": 14.009326628605777
+        }
+      },
+      "expected": {
+        "external_target": {
+          "ce": 2.975336461259548,
+          "ppl": 19.59621550786619
+        },
+        "heldout_target": {
+          "ce": 2.8079943292994787,
+          "ppl": 16.57663757863619
+        },
+        "ood": {
+          "ce": 2.6397232955682535,
+          "ppl": 14.009326628605777
+        }
+      },
+      "match": true,
+      "max_absolute_difference": 0.0,
+      "step": 50
+    },
+    {
+      "absolute_differences": {
+        "external_target": {
+          "ce": 0.0,
+          "ppl": 0.0
+        },
+        "heldout_target": {
+          "ce": 0.0,
+          "ppl": 0.0
+        },
+        "ood": {
+          "ce": 0.0,
+          "ppl": 0.0
+        }
+      },
+      "base_unchanged": true,
+      "checkpoint": "experiments/kyrgyz_generation/checkpoints/axis_step_0100.pt",
+      "condition": {
+        "external_target": {
+          "ce": 2.777251753016303,
+          "ppl": 16.074782713967405
+        },
+        "heldout_target": {
+          "ce": 2.6392074331145463,
+          "ppl": 14.002101606715343
+        },
+        "ood": {
+          "ce": 2.628811440589143,
+          "ppl": 13.857289898020726
+        }
+      },
+      "expected": {
+        "external_target": {
+          "ce": 2.777251753016303,
+          "ppl": 16.074782713967405
+        },
+        "heldout_target": {
+          "ce": 2.6392074331145463,
+          "ppl": 14.002101606715343
+        },
+        "ood": {
+          "ce": 2.628811440589143,
+          "ppl": 13.857289898020726
+        }
+      },
+      "match": true,
+      "max_absolute_difference": 0.0,
+      "step": 100
+    },
+    {
+      "absolute_differences": {
+        "external_target": {
+          "ce": 0.0,
+          "ppl": 0.0
+        },
+        "heldout_target": {
+          "ce": 0.0,
+          "ppl": 0.0
+        },
+        "ood": {
+          "ce": 0.0,
+          "ppl": 0.0
+        }
+      },
+      "base_unchanged": true,
+      "checkpoint": "experiments/kyrgyz_generation/checkpoints/axis_step_0200.pt",
+      "condition": {
+        "external_target": {
+          "ce": 2.572027917320955,
+          "ppl": 13.092347737067065
+        },
+        "heldout_target": {
+          "ce": 2.45027301922703,
+          "ppl": 11.59151099262131
+        },
+        "ood": {
+          "ce": 2.6453624105266864,
+          "ppl": 14.08854999685591
+        }
+      },
+      "expected": {
+        "external_target": {
+          "ce": 2.572027917320955,
+          "ppl": 13.092347737067065
+        },
+        "heldout_target": {
+          "ce": 2.45027301922703,
+          "ppl": 11.59151099262131
+        },
+        "ood": {
+          "ce": 2.6453624105266864,
+          "ppl": 14.08854999685591
+        }
+      },
+      "match": true,
+      "max_absolute_difference": 0.0,
+      "step": 200
+    },
+    {
+      "absolute_differences": {
+        "external_target": {
+          "ce": 0.0,
+          "ppl": 0.0
+        },
+        "heldout_target": {
+          "ce": 0.0,
+          "ppl": 0.0
+        },
+        "ood": {
+          "ce": 0.0,
+          "ppl": 0.0
+        }
+      },
+      "base_unchanged": true,
+      "checkpoint": "experiments/kyrgyz_generation/checkpoints/axis_step_0500.pt",
+      "condition": {
+        "external_target": {
+          "ce": 2.3777072592234942,
+          "ppl": 10.780158399709432
+        },
+        "heldout_target": {
+          "ce": 2.2309856452120727,
+          "ppl": 9.309036966835892
+        },
+        "ood": {
+          "ce": 4.242923168053599,
+          "ppl": 69.61103948505242
+        }
+      },
+      "expected": {
+        "external_target": {
+          "ce": 2.3777072592234942,
+          "ppl": 10.780158399709432
+        },
+        "heldout_target": {
+          "ce": 2.2309856452120727,
+          "ppl": 9.309036966835892
+        },
+        "ood": {
+          "ce": 4.242923168053599,
+          "ppl": 69.61103948505242
+        }
+      },
+      "match": true,
+      "max_absolute_difference": 0.0,
+      "step": 500
+    },
+    {
+      "absolute_differences": {
+        "external_target": {
+          "ce": 0.0,
+          "ppl": 0.0
+        },
+        "heldout_target": {
+          "ce": 0.0,
+          "ppl": 0.0
+        },
+        "ood": {
+          "ce": 0.0,
+          "ppl": 0.0
+        }
+      },
+      "base_unchanged": true,
+      "checkpoint": "experiments/kyrgyz_generation/checkpoints/axis_step_1000.pt",
+      "condition": {
+        "external_target": {
+          "ce": 2.265837993083612,
+          "ppl": 9.639198799502129
+        },
+        "heldout_target": {
+          "ce": 2.0776600193837385,
+          "ppl": 7.985760509382364
+        },
+        "ood": {
+          "ce": 7.331530350761637,
+          "ppl": 1527.7179282604397
+        }
+      },
+      "expected": {
+        "external_target": {
+          "ce": 2.265837993083612,
+          "ppl": 9.639198799502129
+        },
+        "heldout_target": {
+          "ce": 2.0776600193837385,
+          "ppl": 7.985760509382364
+        },
+        "ood": {
+          "ce": 7.331530350761637,
+          "ppl": 1527.7179282604397
+        }
+      },
+      "match": true,
+      "max_absolute_difference": 0.0,
+      "step": 1000
+    },
+    {
+      "absolute_differences": {
+        "external_target": {
+          "ce": 0.0,
+          "ppl": 0.0
+        },
+        "heldout_target": {
+          "ce": 0.0,
+          "ppl": 0.0
+        },
+        "ood": {
+          "ce": 0.0,
+          "ppl": 0.0
+        }
+      },
+      "base_unchanged": true,
+      "checkpoint": "experiments/kyrgyz_generation/checkpoints/axis_step_2000.pt",
+      "condition": {
+        "external_target": {
+          "ce": 2.1476730921737897,
+          "ppl": 8.564905446328273
+        },
+        "heldout_target": {
+          "ce": 1.9189686224651896,
+          "ppl": 6.813927112574621
+        },
+        "ood": {
+          "ce": 8.440101361321377,
+          "ppl": 4629.024164785975
+        }
+      },
+      "expected": {
+        "external_target": {
+          "ce": 2.1476730921737897,
+          "ppl": 8.564905446328273
+        },
+        "heldout_target": {
+          "ce": 1.9189686224651896,
+          "ppl": 6.813927112574621
+        },
+        "ood": {
+          "ce": 8.440101361321377,
+          "ppl": 4629.024164785975
+        }
+      },
+      "match": true,
+      "max_absolute_difference": 0.0,
+      "step": 2000
+    }
+  ],
+  "state_swap": {
+    "step_0050_signature": "11b7d24ceceaaa0f087beb19d8f37dec5217f19c67f8b2a9dd54c900a8f6c6d8",
+    "step_0050_to_step_0100_distinct": true,
+    "step_0100_signature": "97ed2b815c1d641f554b85f1b66a4b9c49d9f9e2cc7953fd48c13f64403ff75d"
+  }
+}

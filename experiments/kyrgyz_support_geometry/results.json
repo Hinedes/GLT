@@ -1,0 +1,83 @@
+{
+  "commit": "3033111b842e798f1a3a5c08ba92252639781247",
+  "host": "root@36.150.116.206:31101",
+  "model": "/workspace/model/real_SmolLM3-3B",
+  "settings": {
+    "steps": 200,
+    "seed": 42,
+    "lr": 0.0002,
+    "weight_decay": 0.01,
+    "lambda_silence": 5.0,
+    "max_len": 512,
+    "max_domains": 4,
+    "layer_range": "0-35",
+    "train_batch": 1,
+    "eval_batch": 8,
+    "trainable_parameters_per_condition": 152174592
+  },
+  "binary_sha256": {
+    "kyrgyz_train.bin": "c63f76b1f870525c651f2743df54b0b6f75f7e26d02fc359219a88f309c03d72",
+    "kyrgyz_heldout.bin": "fe5de6d922da889064f3ef22d10951e61d7387015142257f1a0ab60ffe66783e",
+    "kyrgyz_english_ood.bin": "79cabc3f05659bcb5a7b5e33e5260b1a40759c1b590dc604cb295116d1d51ea6",
+    "kyrgyz_flores.bin": "4439348a87c824cbd32bb38ddb3968251bc4251051d9a22518a5ebb20101d393"
+  },
+  "smoke": {
+    "steps": 2,
+    "modes": ["axis", "random_triplet", "selected_triplet"],
+    "all_passed": true,
+    "checks": [
+      "manifest hashes verified",
+      "host_trainable_params=0",
+      "finite delta gradients",
+      "finite losses",
+      "unique valid deterministic indices",
+      "exact 152174592 trainable parameters"
+    ]
+  },
+  "conditions": {
+    "axis": {
+      "heldout_target_ce": 2.45027301922703,
+      "heldout_target_ppl": 11.59151099262131,
+      "external_target_ce": 2.572027917320955,
+      "external_target_ppl": 13.092347737067065,
+      "ood_ce": 2.6453624105266864,
+      "ood_ppl": 14.08854999685591,
+      "final_training_lm_loss": 2.727630853652954,
+      "final_silence_loss": 0.016254501417279243,
+      "step_time_s": 0.4572491760253906,
+      "peak_vram_mb": 15912
+    },
+    "random_triplet": {
+      "heldout_target_ce": 2.4618090743421344,
+      "heldout_target_ppl": 11.72600557923343,
+      "external_target_ce": 2.5935551899294156,
+      "external_target_ppl": 13.377245812873255,
+      "ood_ce": 2.641909457699427,
+      "ood_ppl": 14.03998678979495,
+      "final_training_lm_loss": 2.6933655738830566,
+      "final_silence_loss": 0.028444215655326843,
+      "step_time_s": 0.45216864013671876,
+      "peak_vram_mb": 14814
+    },
+    "selected_triplet": {
+      "heldout_target_ce": 2.5320172113915014,
+      "heldout_target_ppl": 12.578854770431196,
+      "external_target_ce": 2.661603292953215,
+      "external_target_ppl": 14.31922862272133,
+      "ood_ce": 2.6614623592324453,
+      "ood_ppl": 14.317210702752805,
+      "final_training_lm_loss": 2.827284574508667,
+      "final_silence_loss": 0.029871055856347084,
+      "step_time_s": 0.4527007141113281,
+      "peak_vram_mb": 14824
+    }
+  },
+  "decision": {
+    "selected_wins": false,
+    "heldout_target_check": false,
+    "external_target_check": false,
+    "ood_degradation_check": false,
+    "winner": "no_overall_winner",
+    "summary": "Axis wins both Kyrgyz target PPL metrics; random_triplet has the lowest English OOD PPL; selected_triplet wins none."
+  }
+}

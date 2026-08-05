@@ -216,7 +216,7 @@ def sha256_file(path):
 
 def write_audit(path, tokenizer, binaries):
     with path.open("w", encoding="utf-8") as handle:
-        for name, sequences in binaries.items():
+        for position, (name, sequences) in enumerate(binaries.items()):
             if len(sequences) < 20:
                 raise RuntimeError(f"{name} has only {len(sequences)} sequences; need 20 audit samples")
             handle.write(f"== {name} ==\n")
@@ -225,9 +225,10 @@ def write_audit(path, tokenizer, binaries):
                     sequence,
                     skip_special_tokens=False,
                     clean_up_tokenization_spaces=False,
-                )
+                ).rstrip()
                 handle.write(f"[{index}] {decoded}\n")
-            handle.write("\n")
+            if position + 1 < len(binaries):
+                handle.write("\n")
 
 
 def main():

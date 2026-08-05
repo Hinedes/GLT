@@ -1,0 +1,54 @@
+{
+  "base": {
+    "external_target": {
+      "ce": 3.825238965293779,
+      "ppl": 45.843754123669505
+    },
+    "heldout_target": {
+      "ce": 3.5182459844301825,
+      "ppl": 33.725221990024444
+    },
+    "ood": {
+      "ce": 2.673446165722177,
+      "ppl": 14.4898175632036
+    }
+  },
+  "condition": {
+    "external_target": {
+      "ce": 2.572027917320955,
+      "ppl": 13.092347737067065
+    },
+    "heldout_target": {
+      "ce": 2.45027301922703,
+      "ppl": 11.59151099262131
+    },
+    "ood": {
+      "ce": 2.6453624105266864,
+      "ppl": 14.08854999685591
+    }
+  },
+  "eval_batch": 8,
+  "final_silence_loss": 0.016254501417279243,
+  "final_training_lm_loss": 2.727630853652954,
+  "lambda_silence": 5.0,
+  "layer_range": "0-35",
+  "lr": 0.0002,
+  "max_len": 512,
+  "paths": {
+    "external": "/workspace/kyrgyz_flores.bin",
+    "heldout": "/workspace/kyrgyz_heldout.bin",
+    "manifest": "/workspace/GLT/experiments/kyrgyz_support_geometry/data_manifest.json",
+    "model": "/workspace/model/real_SmolLM3-3B",
+    "ood": [
+      "/workspace/kyrgyz_english_ood.bin"
+    ],
+    "target": "/workspace/kyrgyz_train.bin"
+  },
+  "peak_vram_mb": 15912,
+  "seed": 42,
+  "step_time_s": 0.4572491760253906,
+  "steps": 200,
+  "support_mode": "axis",
+  "trainable_params": 152174592,
+  "weight_decay": 0.01
+}

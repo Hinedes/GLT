@@ -1,0 +1,74 @@
+{
+  "binaries": {
+    "kyrgyz_english_ood": {
+      "duplicate_documents": 20,
+      "path": "/workspace/kyrgyz_english_ood.bin",
+      "rejected_empty_documents": 0,
+      "sequence_count": 4096,
+      "sha256": "79cabc3f05659bcb5a7b5e33e5260b1a40759c1b590dc604cb295116d1d51ea6",
+      "source_document_count": 2265,
+      "source_token_count": 2099175,
+      "token_count": 2097152
+    },
+    "kyrgyz_flores": {
+      "duplicate_documents": 0,
+      "path": "/workspace/kyrgyz_flores.bin",
+      "rejected_empty_documents": 0,
+      "sequence_count": 155,
+      "sha256": "4439348a87c824cbd32bb38ddb3968251bc4251051d9a22518a5ebb20101d393",
+      "source_document_count": 1012,
+      "source_token_count": 79812,
+      "token_count": 79360
+    },
+    "kyrgyz_heldout": {
+      "duplicate_documents": 0,
+      "path": "/workspace/kyrgyz_heldout.bin",
+      "rejected_empty_documents": 0,
+      "sequence_count": 512,
+      "sha256": "fe5de6d922da889064f3ef22d10951e61d7387015142257f1a0ab60ffe66783e",
+      "source_document_count": 147,
+      "source_token_count": 264442,
+      "token_count": 262144
+    },
+    "kyrgyz_train": {
+      "duplicate_documents": 59,
+      "path": "/workspace/kyrgyz_train.bin",
+      "rejected_empty_documents": 0,
+      "sequence_count": 4096,
+      "sha256": "c63f76b1f870525c651f2743df54b0b6f75f7e26d02fc359219a88f309c03d72",
+      "source_document_count": 1177,
+      "source_token_count": 2098736,
+      "token_count": 2097152
+    }
+  },
+  "datasets": {
+    "kyrgyz_english_ood": {
+      "config": "eng-Latn",
+      "dataset": "cis-lmu/GlotCC-V1",
+      "field": "text, explicit content fallback",
+      "split": "train"
+    },
+    "kyrgyz_flores": {
+      "config": "kir_Cyrl",
+      "dataset": "facebook/flores",
+      "field": "sentence",
+      "split": "devtest"
+    },
+    "kyrgyz_heldout": {
+      "config": "kir-Cyrl",
+      "dataset": "cis-lmu/GlotCC-V1",
+      "field": "text, explicit content fallback",
+      "split": "train"
+    },
+    "kyrgyz_train": {
+      "config": "kir-Cyrl",
+      "dataset": "cis-lmu/GlotCC-V1",
+      "field": "text, explicit content fallback",
+      "split": "train"
+    }
+  },
+  "format": "[num_sequences:int32][seq_len:int32][flat token ids:int32...]",
+  "sequence_length": 512,
+  "split_rule": "int(sha256(normalized_document)[:8], 16) % 9 == 0 -> heldout",
+  "tokenizer": "/workspace/model/real_SmolLM3-3B"
+}

@@ -52,6 +52,15 @@ TRIPLET_WIDTH = 688
 SELECTION_SAMPLES = 64
 
 
+def resolve_eos_id(tokenizer):
+    eos_id = tokenizer.eos_token_id
+    if eos_id is None:
+        eos_id = tokenizer.convert_tokens_to_ids("<|end_of_text|>")
+    if eos_id is None:
+        raise RuntimeError("SmolLM3 tokenizer has no usable EOS token")
+    return int(eos_id)
+
+
 def _projection_kind(name):
     leaf = name.rsplit(".", 1)[-1]
     return {
@@ -409,9 +418,8 @@ def main():
 
     resolved = resolve_model_path(model_path)
     tokenizer = AutoTokenizer.from_pretrained(resolved, trust_remote_code=True)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+    eos_id = resolve_eos_id(tokenizer)
+    pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else eos_id
 
     model = AutoModelForCausalLM.from_pretrained(resolved, trust_remote_code=True,
                                                  dtype=model_dtype).to(device)

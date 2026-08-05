@@ -71,6 +71,15 @@ def encode_document(tokenizer, text):
     return token_ids
 
 
+def resolve_eos_id(tokenizer):
+    eos_id = tokenizer.eos_token_id
+    if eos_id is None:
+        eos_id = tokenizer.convert_tokens_to_ids("<|end_of_text|>")
+    if eos_id is None:
+        raise RuntimeError("SmolLM3 tokenizer has no usable EOS token")
+    return int(eos_id)
+
+
 def collect_kyrgyz(dataset, tokenizer, eos_id):
     states = {"train": new_state(), "heldout": new_state()}
     seen = set()
@@ -219,9 +228,7 @@ def main():
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     tokenizer = AutoTokenizer.from_pretrained(str(model_path), trust_remote_code=True)
-    if tokenizer.eos_token_id is None:
-        raise RuntimeError("SmolLM3 tokenizer has no EOS token")
-    eos_id = int(tokenizer.eos_token_id)
+    eos_id = resolve_eos_id(tokenizer)
 
     kyrgyz_ds = load_dataset("cis-lmu/GlotCC-V1", "kir-Cyrl", split="train", streaming=True)
     kyrgyz, split_rule = collect_kyrgyz(kyrgyz_ds, tokenizer, eos_id)

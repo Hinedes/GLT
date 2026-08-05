@@ -4,6 +4,7 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 import struct
 from pathlib import Path
@@ -78,6 +79,23 @@ def resolve_eos_id(tokenizer):
     if eos_id is None:
         raise RuntimeError("SmolLM3 tokenizer has no usable EOS token")
     return int(eos_id)
+
+
+def configure_hf_endpoint():
+    endpoint = os.environ.get("HF_ENDPOINT", "").rstrip("/")
+    if not endpoint or endpoint == "https://huggingface.co":
+        return
+    from huggingface_hub import get_session
+
+    session = get_session()
+    request = session.request
+
+    def routed_request(method, url, *args, **kwargs):
+        if isinstance(url, str) and url.startswith("https://huggingface.co/"):
+            url = endpoint + url[len("https://huggingface.co"):]
+        return request(method, url, *args, **kwargs)
+
+    session.request = routed_request
 
 
 def collect_kyrgyz(dataset, tokenizer, eos_id):
@@ -230,6 +248,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(str(model_path), trust_remote_code=True)
     eos_id = resolve_eos_id(tokenizer)
 
+    configure_hf_endpoint()
     kyrgyz_ds = load_dataset("cis-lmu/GlotCC-V1", "kir-Cyrl", split="train", streaming=True)
     kyrgyz, split_rule = collect_kyrgyz(kyrgyz_ds, tokenizer, eos_id)
     english_ds = load_dataset("cis-lmu/GlotCC-V1", "eng-Latn", split="train", streaming=True)

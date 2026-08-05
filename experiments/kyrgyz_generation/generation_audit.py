@@ -250,6 +250,7 @@ def main():
     parser.add_argument("--checkpoint-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--checkpoint-metrics", type=Path, required=True)
+    parser.add_argument("--state-swap-only", action="store_true")
     parser.add_argument("--model", default="/workspace/model/real_SmolLM3-3B")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--batch", type=int, default=20)
@@ -325,6 +326,13 @@ def main():
     state_swap["step_0050_to_step_0100_distinct"] = True
     state_swap["step_0050_signature"] = signature_digest(signature_50)
     state_swap["step_0100_signature"] = signature_digest(signature_100)
+    if args.state_swap_only:
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        (args.output_dir / "state_swap.json").write_text(
+            json.dumps(state_swap, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        print(json.dumps(state_swap, indent=2, sort_keys=True))
+        return
 
     records = []
     reload_checks = []

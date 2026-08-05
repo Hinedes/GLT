@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # ============================================================================
 # tphs_bench.py — concrete TPHS benchmark worker (replaces the generic
-# TPHS_ENTRY template). It drives the ORIGINAL Hinedes/grafting TPHS
-# implementation (AxisDeltaInjector) so the HIP-vs-TPHS comparison is valid:
+# TPHS_ENTRY template). It drives the original Hinedes/grafting Axis path and
+# the GLT support-geometry triplet paths:
 #
 #   * imports the real AxisDeltaInjector / layer discovery from the TPHS source
 #   * reads the SAME HIP .bin token files the HIP run trains on
@@ -17,13 +17,21 @@
 #   * prints:  step_time_s=<float>   vram_mb=<int>
 #
 # All knobs come from environment variables (set by tphs_run.sh / upload):
-#   TPHS_SRC, TPHS_MODEL, TPHS_DOMAIN_BIN, TPHS_OOD_BINS, TPHS_LAYER_RANGE,
-#   TPHS_BATCH, TPHS_LR, TPHS_LAMBDA, TPHS_STEPS, TPHS_MAX_LEN,
-#   TPHS_DOMAIN_INDEX, TPHS_MAX_DOMAINS
+#   TPHS_SRC, TPHS_MODEL, TPHS_DOMAIN_BIN, TPHS_HELDOUT_BIN, TPHS_OOD_BINS,
+#   TPHS_LAYER_RANGE, TPHS_BATCH, TPHS_LR, TPHS_LAMBDA, TPHS_STEPS,
+#   TPHS_MAX_LEN, TPHS_DOMAIN_INDEX, TPHS_MAX_DOMAINS, TPHS_SUPPORT_MODE
 # ============================================================================
-import os, sys, math, statistics
+import json
+import math
+import os
+import statistics
+import sys
+import time
+from pathlib import Path
+
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 TPHS_SRC = os.environ.get("TPHS_SRC", "/workspace/grafting")
@@ -37,12 +45,136 @@ from engine import (  # noqa: E402  (import after sys.path insert)
 )
 from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: E402
 
+
+TRIPLET_WIDTH = 688
+SELECTION_SAMPLES = 64
+
+
+def _projection_kind(name):
+    leaf = name.rsplit(".", 1)[-1]
+    return {
+        "gate_proj": "gate",
+        "w1": "gate",
+        "up_proj": "up",
+        "w3": "up",
+        "down_proj": "down",
+        "w2": "down",
+    }.get(leaf)
+
+
+def discover_triplet_groups(layers):
+    groups = {}
+    for name in layers:
+        kind = _projection_kind(name)
+        if kind is None:
+            continue
+        parent = name.rsplit(".", 1)[0]
+        if kind in groups.setdefault(parent, {}):
+            raise ValueError(f"duplicate {kind} projection in {parent}")
+        groups[parent][kind] = name
+
+    missing = {
+        parent: sorted({"gate", "up", "down"} - set(group))
+        for parent, group in groups.items()
+        if set(group) != {"gate", "up", "down"}
+    }
+    if missing:
+        raise ValueError(f"incomplete SwiGLU triplets: {missing}")
+    if not groups:
+        raise ValueError("no SwiGLU gate/up/down triplets found")
+    return dict(sorted(groups.items()))
+
+
+class TripletDeltaInjector(nn.Module):
+    """Inject independent FP32 deltas for complete SwiGLU neuron triplets."""
+
+    def __init__(self, layers, groups, indices_by_group):
+        super().__init__()
+        self.layers = layers
+        self.groups = groups
+        self.indices = {}
+        self.deltas = nn.ParameterDict()
+        self.saved_energy = {}
+        self._kinds = {}
+        self._hooks = []
+
+        for parent, names in groups.items():
+            selected = list(indices_by_group[parent])
+            gate = layers[names["gate"]]["module"]
+            up = layers[names["up"]]["module"]
+            down = layers[names["down"]]["module"]
+            inter, hidden = gate.weight.shape
+            if tuple(up.weight.shape) != (inter, hidden):
+                raise ValueError(f"gate/up shape mismatch in {parent}")
+            if tuple(down.weight.shape) != (hidden, inter):
+                raise ValueError(f"down shape mismatch in {parent}")
+            if len(selected) != TRIPLET_WIDTH or len(set(selected)) != len(selected):
+                raise ValueError(f"invalid triplet indices in {parent}")
+            if min(selected) < 0 or max(selected) >= inter:
+                raise ValueError(f"triplet index out of range in {parent}")
+
+            for kind, name, shape in (
+                ("gate", names["gate"], (TRIPLET_WIDTH, hidden)),
+                ("up", names["up"], (TRIPLET_WIDTH, hidden)),
+                ("down", names["down"], (hidden, TRIPLET_WIDTH)),
+            ):
+                safe_name = name.replace(".", "_")
+                self.indices[name] = torch.tensor(
+                    selected, device=layers[name]["module"].weight.device, dtype=torch.long
+                )
+                self.deltas[safe_name] = nn.Parameter(
+                    torch.zeros(shape, device=layers[name]["module"].weight.device, dtype=torch.float32)
+                )
+                self._kinds[name] = kind
+        self.attach()
+
+    def clear_saved_energy(self):
+        self.saved_energy.clear()
+
+    def _inject_hook(self, name):
+        safe_name = name.replace(".", "_")
+
+        def hook(_mod, inp, out):
+            x = inp[0]
+            delta = self.deltas[safe_name].to(dtype=x.dtype)
+            indices = self.indices[name]
+            if self._kinds[name] in ("gate", "up"):
+                correction = F.linear(x, delta)
+                result = out.clone()
+                result[..., indices] = result[..., indices] + correction
+            else:
+                correction = F.linear(x.index_select(-1, indices), delta)
+                result = out + correction
+            self.saved_energy[safe_name] = correction.float().norm(dim=-1) / math.sqrt(correction.size(-1))
+            return result
+
+        return hook
+
+    def attach(self):
+        if self._hooks:
+            return
+        for names in self.groups.values():
+            for name in names.values():
+                self._hooks.append(
+                    self.layers[name]["module"].register_forward_hook(self._inject_hook(name))
+                )
+
+    def detach(self):
+        for hook in self._hooks:
+            hook.remove()
+        self._hooks.clear()
+
+    def delta_token_energy(self, safe_name):
+        return self.saved_energy.get(safe_name)
+
 def read_bin(path):
     with open(path, "rb") as f:
         raw = np.frombuffer(f.read(), dtype="<i4")
     if len(raw) < 2:
         raise RuntimeError(f"empty/invalid .bin: {path}")
     num_seq, seq_len = int(raw[0]), int(raw[1])
+    if num_seq <= 0 or seq_len <= 0 or len(raw) < 2 + num_seq * seq_len:
+        raise RuntimeError(f"truncated/invalid .bin: {path}")
     toks = raw[2:2 + num_seq * seq_len].reshape(num_seq, seq_len)
     return toks
 
@@ -65,25 +197,173 @@ class BinPairDataset(torch.utils.data.Dataset):
         return (torch.tensor([in_seq, out_seq], dtype=torch.long),
                 torch.tensor([in_mask, out_mask], dtype=torch.float32))
 
+
+def _batches(arr, count, max_len, pad_id, batch):
+    selected = np.asarray(arr[:count, :max_len])
+    if selected.shape[1] < max_len:
+        selected = np.pad(selected, ((0, 0), (0, max_len - selected.shape[1])), constant_values=pad_id)
+    for start in range(0, len(selected), batch):
+        yield torch.from_numpy(selected[start:start + batch].astype(np.int64, copy=False))
+
+
+def _random_triplet_indices(groups, layers, seed):
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    result = {}
+    for parent, names in groups.items():
+        inter = layers[names["gate"]]["module"].weight.shape[0]
+        result[parent] = torch.randperm(inter, generator=generator)[:TRIPLET_WIDTH].tolist()
+    return result
+
+
+def _measure_gate_activity(model, layers, groups, domain_arr, ood_arr, max_len, pad_id, batch, device, amp_type, amp_dtype):
+    stats = {}
+    hooks = []
+    phase = "medical"
+    for parent, names in groups.items():
+        gate_name = names["gate"]
+        inter = layers[gate_name]["module"].weight.shape[0]
+        stats[parent] = {
+            "medical_positive": torch.zeros(inter, dtype=torch.long),
+            "ood_positive": torch.zeros(inter, dtype=torch.long),
+            "medical_tokens": 0,
+            "ood_tokens": 0,
+        }
+
+        def make_hook(group_name):
+            def hook(_mod, _inp, out):
+                values = (out.detach() > 0).reshape(-1, out.shape[-1]).sum(dim=0).cpu()
+                stats[group_name][f"{phase}_positive"] += values
+                stats[group_name][f"{phase}_tokens"] += out.numel() // out.shape[-1]
+                return out
+
+            return hook
+
+        hooks.append(layers[gate_name]["module"].register_forward_hook(make_hook(parent)))
+
+    model.eval()
+    sample_count = min(SELECTION_SAMPLES, len(domain_arr), len(ood_arr))
+    if sample_count == 0:
+        raise ValueError("cannot select triplets from empty Medical/OOD data")
+    try:
+        with torch.no_grad():
+            for key, arr in (("medical", domain_arr), ("ood", ood_arr)):
+                phase = key
+                for input_ids in _batches(arr, sample_count, max_len, pad_id, batch):
+                    input_ids = input_ids.to(device)
+                    with torch.amp.autocast(
+                        device_type=amp_type,
+                        dtype=amp_dtype,
+                        enabled=amp_type != "cpu" and amp_dtype != torch.float32,
+                    ):
+                        model(input_ids=input_ids)
+                for record in stats.values():
+                    record[f"{key}_sample_count"] = sample_count
+    finally:
+        for hook in hooks:
+            hook.remove()
+
+    selected = {}
+    serialized = {}
+    for parent, record in stats.items():
+        p_medical = record["medical_positive"].double() / record["medical_tokens"]
+        p_ood = record["ood_positive"].double() / record["ood_tokens"]
+        score = p_medical - p_ood
+        ranked = sorted(range(len(score)), key=lambda index: (-float(score[index]), index))
+        selected[parent] = ranked[:TRIPLET_WIDTH]
+        serialized[parent] = {
+            "p_medical": p_medical.tolist(),
+            "p_ood": p_ood.tolist(),
+            "score": score.tolist(),
+        }
+    return sample_count, selected, serialized
+
+
+def save_triplet_metadata(path, groups, layers, seed, random_indices, selected_indices=None, activity=None, sample_count=0):
+    payload = {
+        "seed": seed,
+        "triplet_width": TRIPLET_WIDTH,
+        "selection_samples": sample_count,
+        "layers": {},
+    }
+    for parent, names in groups.items():
+        inter = layers[names["gate"]]["module"].weight.shape[0]
+        record = {
+            "gate": names["gate"],
+            "up": names["up"],
+            "down": names["down"],
+            "intermediate_size": inter,
+            "random_indices": random_indices[parent],
+        }
+        if selected_indices is not None:
+            record["selected_indices"] = selected_indices[parent]
+        if activity is not None:
+            record["activation"] = activity[parent]
+        payload["layers"][parent] = record
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"triplet_indices_json={path}")
+
+
+def evaluate_sequences(model, arr, max_len, pad_id, batch, device, amp_type, amp_dtype):
+    total_loss = 0.0
+    total_tokens = 0
+    with torch.no_grad():
+        for input_ids in _batches(arr, len(arr), max_len, pad_id, batch):
+            input_ids = input_ids.to(device)
+            with torch.amp.autocast(
+                device_type=amp_type,
+                dtype=amp_dtype,
+                enabled=amp_type != "cpu" and amp_dtype != torch.float32,
+            ):
+                logits = model(input_ids=input_ids).logits[:, :-1]
+                labels = input_ids[:, 1:]
+                loss = F.cross_entropy(
+                    logits.reshape(-1, logits.size(-1)), labels.reshape(-1), reduction="sum"
+                )
+            total_loss += float(loss.float().item())
+            total_tokens += labels.numel()
+    ce = total_loss / total_tokens
+    return {"ce": ce, "ppl": math.exp(ce)}
+
+
+def write_metrics(path, metrics):
+    if not path:
+        return
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"metrics_json={output}")
+
+
 def main():
-    model_path   = os.environ.get("TPHS_MODEL", "/workspace/model/real_SmolLM3-3B")
-    domain_bin   = os.environ.get("TPHS_DOMAIN_BIN", "/workspace/data/medical.bin")
-    ood_bins     = os.environ.get("TPHS_OOD_BINS", "").split()
-    layer_range  = os.environ.get("TPHS_LAYER_RANGE")
-    batch        = int(os.environ.get("TPHS_BATCH", "16"))          # already HIP_BATCH/2
-    lr           = float(os.environ.get("TPHS_LR", "2e-4"))
-    lam          = float(os.environ.get("TPHS_LAMBDA", "5.0"))
-    steps        = int(os.environ.get("TPHS_STEPS", "100"))
-    max_len      = int(os.environ.get("TPHS_MAX_LEN", "512"))
+    support_mode = os.environ.get("TPHS_SUPPORT_MODE", "axis")
+    if support_mode not in {"axis", "random_triplet", "selected_triplet"}:
+        raise ValueError(f"invalid TPHS_SUPPORT_MODE: {support_mode}")
+
+    model_path = os.environ.get("TPHS_MODEL", "/workspace/model/real_SmolLM3-3B")
+    domain_bin = os.environ.get("TPHS_DOMAIN_BIN", "/workspace/med_train.bin")
+    heldout_bin = os.environ.get("TPHS_HELDOUT_BIN", "/workspace/med_heldout.bin")
+    ood_bins = os.environ.get("TPHS_OOD_BINS", "/workspace/medical_ood.bin").split()
+    layer_range = os.environ.get("TPHS_LAYER_RANGE")
+    batch = int(os.environ.get("TPHS_BATCH", "16"))
+    lr = float(os.environ.get("TPHS_LR", "2e-4"))
+    lam = float(os.environ.get("TPHS_LAMBDA", "5.0"))
+    steps = int(os.environ.get("TPHS_STEPS", "100"))
+    max_len = int(os.environ.get("TPHS_MAX_LEN", "512"))
     domain_index = int(os.environ.get("TPHS_DOMAIN_INDEX", "0"))
-    max_domains  = int(os.environ.get("TPHS_MAX_DOMAINS", "4"))
-    seed         = int(os.environ.get("TPHS_SEED", "42"))
+    max_domains = int(os.environ.get("TPHS_MAX_DOMAINS", "4"))
+    seed = int(os.environ.get("TPHS_SEED", "42"))
     torch.manual_seed(seed)
 
     if not layer_range:
         sys.stderr.write("TPHS_BENCH: TPHS_LAYER_RANGE required (selected band)\n"); sys.exit(1)
     if not ood_bins:
         sys.stderr.write("TPHS_BENCH: TPHS_OOD_BINS required\n"); sys.exit(1)
+    for path in [model_path, domain_bin, heldout_bin, *ood_bins]:
+        if not Path(path).exists():
+            raise FileNotFoundError(f"TPHS_BENCH: required path missing: {path}")
 
     device = get_device("auto")
     amp_dtype = get_amp_dtype(device)
@@ -100,9 +380,8 @@ def main():
     model = AutoModelForCausalLM.from_pretrained(resolved, trust_remote_code=True,
                                                  dtype=model_dtype).to(device)
     model.config.use_cache = False
-    model.train()
-
     domain_arr = read_bin(domain_bin)
+    heldout_arr = read_bin(heldout_bin)
     ood_arr = np.concatenate([read_bin(b) for b in ood_bins], axis=0)
     dataset = BinPairDataset(domain_arr, ood_arr, max_len, int(pad_id))
     g = torch.Generator().manual_seed(seed)
@@ -114,22 +393,65 @@ def main():
     if not layers:
         sys.stderr.write("TPHS_BENCH: no FFN layers for range %s\n" % layer_range); sys.exit(1)
     hidden = getattr(model.config, "hidden_size", None)
-    slices = compute_axis_slices(layers, domain_index, max_domains, hidden)
+    if hidden is None:
+        raise ValueError("model config does not expose hidden_size")
 
     # Freeze the host model BEFORE creating D1 (matches original TPHS exactly).
     for p in model.parameters():
         p.requires_grad = False
-    injector = AxisDeltaInjector(layers, slices)
+    groups = None
+    triplet_metadata_path = os.environ.get(
+        "TPHS_SELECTION_JSON", "experiments/medical_support_geometry/selected_indices.json"
+    )
+    if support_mode == "axis":
+        slices = compute_axis_slices(layers, domain_index, max_domains, hidden)
+        injector = AxisDeltaInjector(layers, slices)
+    else:
+        if max_domains != 4:
+            raise ValueError("triplet parameter matching requires TPHS_MAX_DOMAINS=4")
+        groups = discover_triplet_groups(layers)
+        random_indices = _random_triplet_indices(groups, layers, seed)
+        selected_indices = activity = None
+        sample_count = 0
+        if support_mode == "selected_triplet":
+            sample_count, selected_indices, activity = _measure_gate_activity(
+                model, layers, groups, domain_arr, ood_arr, max_len, int(pad_id),
+                batch, device, amp_type, amp_dtype
+            )
+            indices = selected_indices
+        else:
+            indices = random_indices
+        save_triplet_metadata(
+            triplet_metadata_path, groups, layers, seed, random_indices,
+            selected_indices, activity, sample_count
+        )
+        injector = TripletDeltaInjector(layers, groups, indices)
+
     n_host_train = sum(p.requires_grad for p in model.parameters())
-    n_delta_train = sum(p.requires_grad for p in injector.parameters())
+    n_delta_train = sum(p.numel() for p in injector.parameters() if p.requires_grad)
     assert n_host_train == 0, "host model must be frozen (requires_grad==0)"
     assert n_delta_train > 0, "no trainable delta parameters created"
+    print(f"support_mode={support_mode}")
+    print("host_trainable_params=0")
+    print(f"trainable_params={n_delta_train}")
+    if support_mode != "axis":
+        expected_per_layer = 3 * TRIPLET_WIDTH * hidden
+        assert expected_per_layer == 3 * 2752 * 512, expected_per_layer
+        expected_total = expected_per_layer * len(groups)
+        assert n_delta_train == expected_total, (n_delta_train, expected_total)
+        print(f"triplet_width={TRIPLET_WIDTH}")
+        print(f"triplet_layers={len(groups)}")
+        print(f"expected_trainable_params={expected_total}")
+
+    model.train()
     opt = torch.optim.AdamW(injector.parameters(), lr=lr, weight_decay=0.01)
 
     peak_used = 0
     times = []
-    start_ev = torch.cuda.Event(enable_timing=True)
-    end_ev = torch.cuda.Event(enable_timing=True)
+    gpu_timing = device.type == "cuda"
+    start_ev = torch.cuda.Event(enable_timing=True) if gpu_timing else None
+    end_ev = torch.cuda.Event(enable_timing=True) if gpu_timing else None
+    last_lm_loss = last_silence_loss = float("nan")
 
     for step in range(1, steps + 1):
         try:
@@ -139,7 +461,9 @@ def main():
             input_ids, mask = next(loader_iter)
         # Timing boundary matches HIP: start BEFORE the host->device copies,
         # so both runs measure from before H2D through completed AdamW.
-        start_ev.record()
+        start_time = time.perf_counter()
+        if gpu_timing:
+            start_ev.record()
         input_ids = input_ids.view(-1, input_ids.size(-1)).to(device)
         mask = mask.view(-1, mask.size(-1)).to(device)
         injector.clear_saved_energy()
@@ -171,24 +495,73 @@ def main():
 
         total_loss = lm_loss + lam * silence_loss
         total_loss.backward()
+        if step == 1:
+            assert all(p.grad is None for p in model.parameters()), "frozen host received gradients"
+            assert all(p.grad is not None for p in injector.parameters()), "a delta parameter received no gradient"
+            print("delta_gradients_complete=true")
         torch.nn.utils.clip_grad_norm_(injector.parameters(), max_norm=1.0)
         opt.step()
         opt.zero_grad(set_to_none=True)
         injector.clear_saved_energy()
-        end_ev.record()
-        torch.cuda.synchronize()   # ensure the step's GPU work is complete before timing
+        last_lm_loss = float(lm_loss.detach().item())
+        last_silence_loss = float(silence_loss.detach().item())
+        if gpu_timing:
+            end_ev.record()
+            torch.cuda.synchronize()   # ensure the step's GPU work is complete before timing
 
         if step > 1:              # exclude first-step warmup from the median
-            times.append(start_ev.elapsed_time(end_ev) / 1000.0)
-        free, total = torch.cuda.mem_get_info()
-        used = int(total - free)
-        if used > peak_used:
-            peak_used = used
+            times.append(
+                start_ev.elapsed_time(end_ev) / 1000.0 if gpu_timing else time.perf_counter() - start_time
+            )
+        if gpu_timing:
+            free, total = torch.cuda.mem_get_info()
+            peak_used = max(peak_used, int(total - free))
 
     step_time_s = float(statistics.median(times)) if times else 0.0
     vram_mb = peak_used // (1024 * 1024)
+    model.eval()
+    injector.detach()
+    base_metrics = {
+        "medical": evaluate_sequences(model, heldout_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype),
+        "ood": evaluate_sequences(model, ood_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype),
+    }
+    injector.attach()
+    condition_metrics = {
+        "medical": evaluate_sequences(model, heldout_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype),
+        "ood": evaluate_sequences(model, ood_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype),
+    }
+    metrics = {
+        "support_mode": support_mode,
+        "seed": seed,
+        "steps": steps,
+        "lr": lr,
+        "weight_decay": 0.01,
+        "lambda_silence": lam,
+        "max_len": max_len,
+        "layer_range": layer_range,
+        "paths": {
+            "model": model_path,
+            "train": domain_bin,
+            "heldout": heldout_bin,
+            "ood": ood_bins,
+        },
+        "trainable_params": n_delta_train,
+        "final_training_lm_loss": last_lm_loss,
+        "final_silence_loss": last_silence_loss,
+        "step_time_s": step_time_s,
+        "peak_vram_mb": vram_mb,
+        "base": base_metrics,
+        "condition": condition_metrics,
+    }
+    print(f"final_training_lm_loss={last_lm_loss:.6f}")
+    print(f"final_silence_loss={last_silence_loss:.6f}")
     print(f"step_time_s={step_time_s:.6f}")
     print(f"vram_mb={vram_mb}")
+    for label, record in (("base", base_metrics), ("condition", condition_metrics)):
+        for split in ("medical", "ood"):
+            print(f"{label}_{split}_ce={record[split]['ce']:.6f}")
+            print(f"{label}_{split}_ppl={record[split]['ppl']:.6f}")
+    write_metrics(os.environ.get("TPHS_RESULT_JSON"), metrics)
 
 if __name__ == "__main__":
     main()

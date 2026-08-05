@@ -2,13 +2,13 @@
 # ============================================================================
 # tphs_run.sh — the REAL TPHS_CMD used by bench.sh.
 # It computes the hyperparameters MATCHED to the HIP run, exports them, and
-# execs the concrete worker deploy/tphs_bench.py (which drives the original
-# Hinedes/grafting AxisDeltaInjector). The worker prints step_time_s= and
-# vram_mb=, which bench.sh reads from tphs.log.
+# execs deploy/tphs_bench.py. The worker prints step_time_s= and vram_mb=,
+# which bench.sh reads from tphs.log.
 #
 # Matched against the HIP sparse run (train.sh):
 #   domain data + OOD data (same .bin files), LR, silence lambda, selected
 #   layer band, batch (= HIP_BATCH/2 to equalize sequence count), steps, max_len.
+#   TPHS_SUPPORT_MODE selects axis, random_triplet, or selected_triplet.
 # ============================================================================
 set -Eeuo pipefail
 source "$(dirname "$0")/config.sh"
@@ -16,10 +16,12 @@ source "$(dirname "$0")/lib.sh"
 
 # ---- match the HIP training data exactly (mirrors train.sh defaults) ----
 TRAIN_STEPS="${TRAIN_STEPS:-100}"
-DOMAIN_DATA="${DOMAIN_DATA:-${ROOT}/data/medical.bin}"
-OOD_DATA="${OOD_DATA:-${ROOT}/data/coding.bin ${ROOT}/data/conversational.bin ${ROOT}/data/finance.bin ${ROOT}/data/legal.bin ${ROOT}/data/math.bin ${ROOT}/data/minipile.bin ${ROOT}/data/niche.bin ${ROOT}/data/science.bin}"
+DOMAIN_DATA="${DOMAIN_DATA:-${ROOT}/med_train.bin}"
+HELDOUT_DATA="${HELDOUT_DATA:-${ROOT}/med_heldout.bin}"
+OOD_DATA="${OOD_DATA:-${ROOT}/medical_ood.bin}"
 LR="${LR:-0.0002}"
 LAMBDA_SILENCE="${LAMBDA_SILENCE:-5.0}"
+TPHS_SUPPORT_MODE="${TPHS_SUPPORT_MODE:-axis}"
 
 # Selected layer band from the HIP localization result
 sel_lo=$(grep -o '"selected_lo":[^,}]*' "$OUT_DIR/layer_map.json" 2>/dev/null | head -1 | sed 's/.*://; s/[,}]//g' || true)
@@ -33,6 +35,7 @@ TPHS_BATCH="${TPHS_BATCH:-$((BATCH_SIZE / 2))}"
 export TPHS_SRC="${TPHS_SRC:-/workspace/grafting}"
 export TPHS_MODEL="${TPHS_MODEL:-${ROOT}/model/real_SmolLM3-3B}"
 export TPHS_DOMAIN_BIN="${TPHS_DOMAIN_BIN:-$DOMAIN_DATA}"
+export TPHS_HELDOUT_BIN="${TPHS_HELDOUT_BIN:-$HELDOUT_DATA}"
 export TPHS_OOD_BINS="${TPHS_OOD_BINS:-$OOD_DATA}"
 export TPHS_LAYER_RANGE
 export TPHS_BATCH
@@ -43,10 +46,14 @@ export TPHS_MAX_LEN="${TPHS_MAX_LEN:-$MAX_LEN}"
 export TPHS_DOMAIN_INDEX="${TPHS_DOMAIN_INDEX:-0}"
 export TPHS_MAX_DOMAINS="${TPHS_MAX_DOMAINS:-4}"
 export TPHS_SEED="${TPHS_SEED:-$SEED}"
+export TPHS_SUPPORT_MODE
+export TPHS_RESULT_JSON="${TPHS_RESULT_JSON:-${OUT_DIR}/tphs_${TPHS_SUPPORT_MODE}.json}"
+export TPHS_SELECTION_JSON="${TPHS_SELECTION_JSON:-${OUT_DIR}/selected_indices.json}"
 
 log "TPHS_RUN: src=$TPHS_SRC model=$TPHS_MODEL"
 log "TPHS_RUN: domain=$TPHS_DOMAIN_BIN"
+log "TPHS_RUN: heldout=$TPHS_HELDOUT_BIN"
 log "TPHS_RUN: ood=$TPHS_OOD_BINS"
-log "TPHS_RUN: layer_range=$TPHS_LAYER_RANGE batch=$TPHS_BATCH (HIP_BATCH=$BATCH_SIZE/2) lr=$TPHS_LR lambda=$TPHS_LAMBDA steps=$TPHS_STEPS max_len=$TPHS_MAX_LEN"
+log "TPHS_RUN: mode=$TPHS_SUPPORT_MODE layer_range=$TPHS_LAYER_RANGE batch=$TPHS_BATCH (HIP_BATCH=$BATCH_SIZE/2) lr=$TPHS_LR lambda=$TPHS_LAMBDA steps=$TPHS_STEPS max_len=$TPHS_MAX_LEN"
 
 exec python3 "$(dirname "$0")/tphs_bench.py" 2>&1 | tee "$OUT_DIR/tphs.log"

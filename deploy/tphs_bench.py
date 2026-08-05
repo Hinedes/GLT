@@ -17,10 +17,12 @@
 #   * prints:  step_time_s=<float>   vram_mb=<int>
 #
 # All knobs come from environment variables (set by tphs_run.sh / upload):
-#   TPHS_SRC, TPHS_MODEL, TPHS_DOMAIN_BIN, TPHS_HELDOUT_BIN, TPHS_OOD_BINS,
-#   TPHS_LAYER_RANGE, TPHS_BATCH, TPHS_LR, TPHS_LAMBDA, TPHS_STEPS,
-#   TPHS_MAX_LEN, TPHS_DOMAIN_INDEX, TPHS_MAX_DOMAINS, TPHS_SUPPORT_MODE
+#   TPHS_SRC, TPHS_MODEL, TPHS_TARGET_BIN, TPHS_HELDOUT_BIN, TPHS_OOD_BINS,
+#   TPHS_EXTERNAL_BIN, TPHS_DATA_MANIFEST, TPHS_LAYER_RANGE, TPHS_BATCH,
+#   TPHS_LR, TPHS_LAMBDA, TPHS_STEPS, TPHS_MAX_LEN, TPHS_DOMAIN_INDEX,
+#   TPHS_MAX_DOMAINS, TPHS_SUPPORT_MODE
 # ============================================================================
+import hashlib
 import json
 import math
 import os
@@ -179,14 +181,13 @@ def read_bin(path):
     return toks
 
 class BinPairDataset(torch.utils.data.Dataset):
-    """Mirrors TPHS BalancedPureDataset token-layout (no re-tokenization):
-    returns ([domain_seq, ood_seq], [domain_mask, ood_mask]) with pad=-1."""
-    def __init__(self, domain_arr, ood_arr, max_len, pad_id):
-        self.domain = domain_arr; self.ood = ood_arr
+    """Mirrors TPHS BalancedPureDataset with target/OOD token layouts."""
+    def __init__(self, target_arr, ood_arr, max_len, pad_id):
+        self.target = target_arr; self.ood = ood_arr
         self.max_len = max_len; self.pad = pad_id
     def __len__(self): return 10000
     def __getitem__(self, idx):
-        in_seq = self.domain[idx % len(self.domain)][:self.max_len].tolist()
+        in_seq = self.target[idx % len(self.target)][:self.max_len].tolist()
         in_mask = [1.0] * len(in_seq)
         out_seq = self.ood[idx % len(self.ood)][:self.max_len].tolist()
         out_mask = [0.0] * len(out_seq)
@@ -215,17 +216,17 @@ def _random_triplet_indices(groups, layers, seed):
     return result
 
 
-def _measure_gate_activity(model, layers, groups, domain_arr, ood_arr, max_len, pad_id, batch, device, amp_type, amp_dtype):
+def _measure_gate_activity(model, layers, groups, target_arr, ood_arr, max_len, pad_id, batch, device, amp_type, amp_dtype):
     stats = {}
     hooks = []
-    phase = "medical"
+    phase = "target"
     for parent, names in groups.items():
         gate_name = names["gate"]
         inter = layers[gate_name]["module"].weight.shape[0]
         stats[parent] = {
-            "medical_positive": torch.zeros(inter, dtype=torch.long),
+            "target_positive": torch.zeros(inter, dtype=torch.long),
             "ood_positive": torch.zeros(inter, dtype=torch.long),
-            "medical_tokens": 0,
+            "target_tokens": 0,
             "ood_tokens": 0,
         }
 
@@ -241,12 +242,12 @@ def _measure_gate_activity(model, layers, groups, domain_arr, ood_arr, max_len, 
         hooks.append(layers[gate_name]["module"].register_forward_hook(make_hook(parent)))
 
     model.eval()
-    sample_count = min(SELECTION_SAMPLES, len(domain_arr), len(ood_arr))
+    sample_count = min(SELECTION_SAMPLES, len(target_arr), len(ood_arr))
     if sample_count == 0:
-        raise ValueError("cannot select triplets from empty Medical/OOD data")
+        raise ValueError("cannot select triplets from empty target/OOD data")
     try:
         with torch.no_grad():
-            for key, arr in (("medical", domain_arr), ("ood", ood_arr)):
+            for key, arr in (("target", target_arr), ("ood", ood_arr)):
                 phase = key
                 for input_ids in _batches(arr, sample_count, max_len, pad_id, batch):
                     input_ids = input_ids.to(device)
@@ -265,23 +266,24 @@ def _measure_gate_activity(model, layers, groups, domain_arr, ood_arr, max_len, 
     selected = {}
     serialized = {}
     for parent, record in stats.items():
-        p_medical = record["medical_positive"].double() / record["medical_tokens"]
+        p_target = record["target_positive"].double() / record["target_tokens"]
         p_ood = record["ood_positive"].double() / record["ood_tokens"]
-        score = p_medical - p_ood
+        score = p_target - p_ood
         ranked = sorted(range(len(score)), key=lambda index: (-float(score[index]), index))
         selected[parent] = ranked[:TRIPLET_WIDTH]
         serialized[parent] = {
-            "p_medical": p_medical.tolist(),
+            "p_target": p_target.tolist(),
             "p_ood": p_ood.tolist(),
             "score": score.tolist(),
         }
     return sample_count, selected, serialized
 
 
-def save_triplet_metadata(path, groups, layers, seed, random_indices, selected_indices=None, activity=None, sample_count=0):
+def save_triplet_metadata(path, groups, layers, seed, indices, mode, activity=None, sample_count=0):
     payload = {
         "seed": seed,
         "triplet_width": TRIPLET_WIDTH,
+        "mode": mode,
         "selection_samples": sample_count,
         "layers": {},
     }
@@ -292,10 +294,8 @@ def save_triplet_metadata(path, groups, layers, seed, random_indices, selected_i
             "up": names["up"],
             "down": names["down"],
             "intermediate_size": inter,
-            "random_indices": random_indices[parent],
+            "indices": indices[parent],
         }
-        if selected_indices is not None:
-            record["selected_indices"] = selected_indices[parent]
         if activity is not None:
             record["activation"] = activity[parent]
         payload["layers"][parent] = record
@@ -304,6 +304,27 @@ def save_triplet_metadata(path, groups, layers, seed, random_indices, selected_i
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"triplet_indices_json={path}")
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_data_manifest(path, named_paths):
+    manifest_path = Path(path)
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"TPHS_BENCH: data manifest missing: {manifest_path}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for name, data_path in named_paths.items():
+        expected = manifest["binaries"][name]["sha256"]
+        actual = sha256_file(data_path)
+        if actual != expected:
+            raise RuntimeError(f"TPHS_BENCH: hash mismatch for {name}: {actual} != {expected}")
+    print(f"data_manifest_verified={manifest_path}")
 
 
 def evaluate_sequences(model, arr, max_len, pad_id, batch, device, amp_type, amp_dtype):
@@ -343,9 +364,14 @@ def main():
         raise ValueError(f"invalid TPHS_SUPPORT_MODE: {support_mode}")
 
     model_path = os.environ.get("TPHS_MODEL", "/workspace/model/real_SmolLM3-3B")
-    domain_bin = os.environ.get("TPHS_DOMAIN_BIN", "/workspace/med_train.bin")
-    heldout_bin = os.environ.get("TPHS_HELDOUT_BIN", "/workspace/med_heldout.bin")
-    ood_bins = os.environ.get("TPHS_OOD_BINS", "/workspace/medical_ood.bin").split()
+    target_bin = os.environ.get("TPHS_TARGET_BIN", "/workspace/kyrgyz_train.bin")
+    heldout_bin = os.environ.get("TPHS_HELDOUT_BIN", "/workspace/kyrgyz_heldout.bin")
+    ood_bins = os.environ.get("TPHS_OOD_BINS", "/workspace/kyrgyz_english_ood.bin").split()
+    external_bin = os.environ.get("TPHS_EXTERNAL_BIN", "").strip()
+    data_manifest = os.environ.get(
+        "TPHS_DATA_MANIFEST",
+        "/workspace/GLT/experiments/kyrgyz_support_geometry/data_manifest.json",
+    )
     layer_range = os.environ.get("TPHS_LAYER_RANGE")
     batch = int(os.environ.get("TPHS_BATCH", "16"))
     lr = float(os.environ.get("TPHS_LR", "2e-4"))
@@ -361,9 +387,19 @@ def main():
         sys.stderr.write("TPHS_BENCH: TPHS_LAYER_RANGE required (selected band)\n"); sys.exit(1)
     if not ood_bins:
         sys.stderr.write("TPHS_BENCH: TPHS_OOD_BINS required\n"); sys.exit(1)
-    for path in [model_path, domain_bin, heldout_bin, *ood_bins]:
+    for path in [model_path, target_bin, heldout_bin, *ood_bins, *([external_bin] if external_bin else [])]:
         if not Path(path).exists():
             raise FileNotFoundError(f"TPHS_BENCH: required path missing: {path}")
+    named_paths = {
+        "kyrgyz_train": target_bin,
+        "kyrgyz_heldout": heldout_bin,
+        "kyrgyz_english_ood": ood_bins[0],
+    }
+    if len(ood_bins) != 1:
+        raise ValueError("TPHS_BENCH: Kyrgyz experiment requires one English OOD binary")
+    if external_bin:
+        named_paths["kyrgyz_flores"] = external_bin
+    verify_data_manifest(data_manifest, named_paths)
 
     device = get_device("auto")
     amp_dtype = get_amp_dtype(device)
@@ -380,10 +416,11 @@ def main():
     model = AutoModelForCausalLM.from_pretrained(resolved, trust_remote_code=True,
                                                  dtype=model_dtype).to(device)
     model.config.use_cache = False
-    domain_arr = read_bin(domain_bin)
+    target_arr = read_bin(target_bin)
     heldout_arr = read_bin(heldout_bin)
     ood_arr = np.concatenate([read_bin(b) for b in ood_bins], axis=0)
-    dataset = BinPairDataset(domain_arr, ood_arr, max_len, int(pad_id))
+    external_arr = read_bin(external_bin) if external_bin else None
+    dataset = BinPairDataset(target_arr, ood_arr, max_len, int(pad_id))
     g = torch.Generator().manual_seed(seed)
     loader = torch.utils.data.DataLoader(dataset, batch_size=batch, shuffle=True,
                                         drop_last=True, generator=g)
@@ -400,8 +437,11 @@ def main():
     for p in model.parameters():
         p.requires_grad = False
     groups = None
-    triplet_metadata_path = os.environ.get(
-        "TPHS_SELECTION_JSON", "experiments/medical_support_geometry/selected_indices.json"
+    random_metadata_path = os.environ.get(
+        "TPHS_RANDOM_INDICES_JSON", "experiments/kyrgyz_support_geometry/random_indices.json"
+    )
+    selected_metadata_path = os.environ.get(
+        "TPHS_SELECTED_INDICES_JSON", "experiments/kyrgyz_support_geometry/selected_indices.json"
     )
     if support_mode == "axis":
         slices = compute_axis_slices(layers, domain_index, max_domains, hidden)
@@ -415,16 +455,22 @@ def main():
         sample_count = 0
         if support_mode == "selected_triplet":
             sample_count, selected_indices, activity = _measure_gate_activity(
-                model, layers, groups, domain_arr, ood_arr, max_len, int(pad_id),
+                model, layers, groups, target_arr, ood_arr, max_len, int(pad_id),
                 batch, device, amp_type, amp_dtype
             )
             indices = selected_indices
         else:
             indices = random_indices
-        save_triplet_metadata(
-            triplet_metadata_path, groups, layers, seed, random_indices,
-            selected_indices, activity, sample_count
-        )
+        if support_mode == "random_triplet":
+            save_triplet_metadata(
+                random_metadata_path, groups, layers, seed, random_indices,
+                "random_triplet"
+            )
+        else:
+            save_triplet_metadata(
+                selected_metadata_path, groups, layers, seed, selected_indices,
+                "selected_triplet", activity, sample_count
+            )
         injector = TripletDeltaInjector(layers, groups, indices)
 
     n_host_train = sum(p.requires_grad for p in model.parameters())
@@ -494,10 +540,14 @@ def main():
                 silence_loss /= n_layers
 
         total_loss = lm_loss + lam * silence_loss
+        assert torch.isfinite(total_loss), "non-finite training loss"
         total_loss.backward()
         if step == 1:
             assert all(p.grad is None for p in model.parameters()), "frozen host received gradients"
-            assert all(p.grad is not None for p in injector.parameters()), "a delta parameter received no gradient"
+            assert all(
+                p.grad is not None and torch.isfinite(p.grad).all()
+                for p in injector.parameters()
+            ), "a delta parameter received a missing or non-finite gradient"
             print("delta_gradients_complete=true")
         torch.nn.utils.clip_grad_norm_(injector.parameters(), max_norm=1.0)
         opt.step()
@@ -522,14 +572,22 @@ def main():
     model.eval()
     injector.detach()
     base_metrics = {
-        "medical": evaluate_sequences(model, heldout_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype),
+        "heldout_target": evaluate_sequences(model, heldout_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype),
         "ood": evaluate_sequences(model, ood_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype),
     }
+    if external_arr is not None:
+        base_metrics["external_target"] = evaluate_sequences(
+            model, external_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype
+        )
     injector.attach()
     condition_metrics = {
-        "medical": evaluate_sequences(model, heldout_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype),
+        "heldout_target": evaluate_sequences(model, heldout_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype),
         "ood": evaluate_sequences(model, ood_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype),
     }
+    if external_arr is not None:
+        condition_metrics["external_target"] = evaluate_sequences(
+            model, external_arr, max_len, int(pad_id), batch, device, amp_type, amp_dtype
+        )
     metrics = {
         "support_mode": support_mode,
         "seed": seed,
@@ -541,9 +599,11 @@ def main():
         "layer_range": layer_range,
         "paths": {
             "model": model_path,
-            "train": domain_bin,
+            "target": target_bin,
             "heldout": heldout_bin,
             "ood": ood_bins,
+            "external": external_bin or None,
+            "manifest": data_manifest,
         },
         "trainable_params": n_delta_train,
         "final_training_lm_loss": last_lm_loss,
@@ -558,7 +618,7 @@ def main():
     print(f"step_time_s={step_time_s:.6f}")
     print(f"vram_mb={vram_mb}")
     for label, record in (("base", base_metrics), ("condition", condition_metrics)):
-        for split in ("medical", "ood"):
+        for split in record:
             print(f"{label}_{split}_ce={record[split]['ce']:.6f}")
             print(f"{label}_{split}_ppl={record[split]['ppl']:.6f}")
     write_metrics(os.environ.get("TPHS_RESULT_JSON"), metrics)

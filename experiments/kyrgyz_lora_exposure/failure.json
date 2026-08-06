@@ -1,0 +1,6 @@
+{
+  "error_type": "IndexError",
+  "error": "list index out of range",
+  "traceback": "Traceback (most recent call last):\n  File \"/workspace/GLT/experiments/kyrgyz_lora_exposure/run_exposure.py\", line 310, in <module>\n    main()\n  File \"/workspace/GLT/experiments/kyrgyz_lora_exposure/run_exposure.py\", line 294, in main\n    \"loss_at_steps\": {str(item): losses[item - 1] for item in CHECKPOINT_STEPS},\n                                 ~~~~~~^^^^^^^^^^\nIndexError: list index out of range\n",
+  "command": "/opt/venv/bin/python /workspace/GLT/experiments/kyrgyz_lora_exposure/run_exposure.py"
+}

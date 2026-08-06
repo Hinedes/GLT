@@ -1,0 +1,166 @@
+{
+  "model": "/workspace/model/real_SmolLM3-3B",
+  "config": {
+    "seed": 42,
+    "batch": 1,
+    "max_len": 512,
+    "learning_rate": 0.0002,
+    "weight_decay": 0.01,
+    "optimizer": "AdamW",
+    "autocast_dtype": "torch.bfloat16",
+    "target_modules": [
+      "gate_proj",
+      "up_proj",
+      "down_proj"
+    ],
+    "rank": 32,
+    "alpha": 64,
+    "dropout": 0.0,
+    "bias": "none",
+    "use_cache_training": false
+  },
+  "paths": {
+    "train": "/workspace/kyrgyz_train.bin",
+    "heldout": "/workspace/kyrgyz_heldout.bin",
+    "flores": "/workspace/kyrgyz_flores.bin",
+    "ood": "/workspace/kyrgyz_english_ood.bin"
+  },
+  "trainable_parameters": 45121536,
+  "checkpoint_steps": [
+    {
+      "step": 200,
+      "actual_supervised_tokens_seen": 102200,
+      "training_loss": 2.6577353477478027,
+      "evaluation": {
+        "heldout_kyrgyz": {
+          "ce": 2.4837931018986112,
+          "ppl": 11.986644862499938
+        },
+        "kyrgyz_flores": {
+          "ce": 2.6211410646719746,
+          "ppl": 13.751405879559403
+        },
+        "english_ood": {
+          "ce": 2.6252554316809964,
+          "ppl": 13.808100762037322
+        }
+      },
+      "wall_time_s": 483.7159407469444,
+      "checkpoint_path": "/workspace/GLT/experiments/kyrgyz_lora_exposure/checkpoints/step_0200",
+      "artifact_hashes": {
+        "files": {
+          "README.md": "4e72ac623b80ff3f7a10bdff4fc2a47f65127c899e120f733835b1ec5e413b4d",
+          "adapter_config.json": "0cc8ca9b546edac1ecfefa331a7f231410f1f25c55bb897be0ee788a0d5e1081",
+          "adapter_model.safetensors": "6ac2ca1421fe5c8f7b15724933d62df955f162cd2491c82b22e6b8ef7d1f006d",
+          "optimizer.pt": "ab11bbb72fd467af4f918d8a6308b4948bbae4b408cd05d9e7de13512fc09737"
+        },
+        "manifest": "4643eff9cfc4f8773c74981153364031c5f886d93df4368692891e612cf4bfb5"
+      },
+      "generation_records_added": 6
+    },
+    {
+      "step": 1000,
+      "actual_supervised_tokens_seen": 511000,
+      "training_loss": 1.2746273279190063,
+      "evaluation": {
+        "heldout_kyrgyz": {
+          "ce": 2.0943128246150606,
+          "ppl": 8.119859285204035
+        },
+        "kyrgyz_flores": {
+          "ce": 2.280035794551125,
+          "ppl": 9.777030367678918
+        },
+        "english_ood": {
+          "ce": 2.6483361178648215,
+          "ppl": 14.130507575225579
+        }
+      },
+      "wall_time_s": 1213.0219465112314,
+      "checkpoint_path": "/workspace/GLT/experiments/kyrgyz_lora_exposure/checkpoints/step_1000",
+      "artifact_hashes": {
+        "files": {
+          "README.md": "4e72ac623b80ff3f7a10bdff4fc2a47f65127c899e120f733835b1ec5e413b4d",
+          "adapter_config.json": "0cc8ca9b546edac1ecfefa331a7f231410f1f25c55bb897be0ee788a0d5e1081",
+          "adapter_model.safetensors": "a66a09b8ac638e636c366eee4409877bdc004624ed12d2f68e21fdf8e847f72f",
+          "optimizer.pt": "06eabafa8ed10263932bcc235daedd703793bb850b4ececedd98e6c0a4765e46"
+        },
+        "manifest": "3f585828366b3eb325db5f33f68c5c502616ac1a90b36b0860ef6097147ec9ed"
+      },
+      "generation_records_added": 6
+    },
+    {
+      "step": 2000,
+      "actual_supervised_tokens_seen": 1022000,
+      "training_loss": 1.4307312965393066,
+      "evaluation": {
+        "heldout_kyrgyz": {
+          "ce": 1.932014999091042,
+          "ppl": 6.9034065943230205
+        },
+        "kyrgyz_flores": {
+          "ce": 2.134588153367843,
+          "ppl": 8.453564217873424
+        },
+        "english_ood": {
+          "ce": 2.6731794653806666,
+          "ppl": 14.4859536391889
+        }
+      },
+      "wall_time_s": 2024.7604182050563,
+      "checkpoint_path": "/workspace/GLT/experiments/kyrgyz_lora_exposure/checkpoints/step_2000",
+      "artifact_hashes": {
+        "files": {
+          "README.md": "4e72ac623b80ff3f7a10bdff4fc2a47f65127c899e120f733835b1ec5e413b4d",
+          "adapter_config.json": "0cc8ca9b546edac1ecfefa331a7f231410f1f25c55bb897be0ee788a0d5e1081",
+          "adapter_model.safetensors": "b2623b20c3a4d96934b9572c5c75dc8940c15512d483a829dd08e80b44973b7e",
+          "optimizer.pt": "c47d1ee15cd727c9a492a1d5d1409e1741dc7dc70971943d132a16bb86e7773b"
+        },
+        "manifest": "b5761d28434248e00913df38831e7778d3d8d55ffceceda3fe141896766e8068"
+      },
+      "generation_records_added": 6
+    },
+    {
+      "step": 5000,
+      "actual_supervised_tokens_seen": 2555000,
+      "training_loss": 1.1728620529174805,
+      "evaluation": {
+        "heldout_kyrgyz": {
+          "ce": 1.8097186881735368,
+          "ppl": 6.108728732859506
+        },
+        "kyrgyz_flores": {
+          "ce": 2.0906861484340475,
+          "ppl": 8.09046451980753
+        },
+        "english_ood": {
+          "ce": 2.8297273229712845,
+          "ppl": 16.940840816546817
+        }
+      },
+      "wall_time_s": 3659.865242946893,
+      "checkpoint_path": "/workspace/GLT/experiments/kyrgyz_lora_exposure/checkpoints/step_5000",
+      "artifact_hashes": {
+        "files": {
+          "README.md": "4e72ac623b80ff3f7a10bdff4fc2a47f65127c899e120f733835b1ec5e413b4d",
+          "adapter_config.json": "0cc8ca9b546edac1ecfefa331a7f231410f1f25c55bb897be0ee788a0d5e1081",
+          "adapter_model.safetensors": "c67de2de731c3b9a2062ad164f59702cb18ca321c576125d24f8faee41a75393",
+          "optimizer.pt": "346b1fabb6c74e408732ad7c2be14dac316b7a601ded7b8f33b77f61bd08d9c1"
+        },
+        "manifest": "ea2769e182236014999824990e2bd26d50328f7f2d52a589668ac62d4bae81ad"
+      },
+      "generation_records_added": 6
+    }
+  ],
+  "loss_at_steps": {
+    "200": 2.6577353477478027,
+    "1000": 1.2746273279190063,
+    "2000": 1.4307312965393066,
+    "5000": 1.1728620529174805
+  },
+  "peak_vram_allocated_mb": 12761.06640625,
+  "peak_vram_reserved_mb": 18742.0,
+  "wall_time_s": 3659.8655373840593,
+  "generation_records": 24,
+  "final_training_loss": 1.1728620529174805
+}
